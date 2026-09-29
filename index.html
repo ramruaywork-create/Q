@@ -2575,6 +2575,8 @@ const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_
 const LINE_LIVE_SHEET_ID = '1a9i7Q-liFcLHIhu6VXdynHy2yrrs1YpUGxXxKx7pnyE';
 const LINE_LIVE_SHEET = 'Untitled';
 const LINE_POLL_MS = 30000;
+const LINE_ONLY_TAG = 'Sofia Alvarez';  // รับเฉพาะข้อความที่แท็กคนนี้
+const lineTagsTarget = msg => String(msg || '').toLowerCase().includes('@' + LINE_ONLY_TAG.toLowerCase());
 const lineLive = {ok:null, msg:'กำลังเชื่อมต่อ…', timer:null, busy:false};
 let gvizSeq = 0;
 function gviz(sheetId, sheet){ // JSONP — Google Sheet ไม่เปิด CORS ให้ fetch ตรงๆ
@@ -2604,10 +2606,10 @@ function lineDue(v){
   return m ? m[1]+'-'+pad2(+m[2]+1)+'-'+pad2(+m[3]) : '';
 }
 function lineTaskFromRow(r){
-  const person = /^[.\-]?$/.test(r.person) ? '' : r.person;  // "." / "-" = บอทไม่รู้ว่าแท็กใคร
+  const person = LINE_ONLY_TAG;
   let text = r.message;
-  if(person && text.includes('@'+person)) text = text.replace('@'+person, ' ');
-  else text = text.replace(/^\s*@\S+/, ' ');
+  const at = text.toLowerCase().indexOf('@' + person.toLowerCase());
+  if(at >= 0) text = text.slice(0, at) + ' ' + text.slice(at + person.length + 1);
   let shopCode = '';
   text = text.replace(/(^|\s)\/([^\/\s]+)\/(?=\s|$)/, (m0, sp, code) => { shopCode = code; return ' '; });
   text = text.replace(/\s+/g, ' ').trim();
@@ -2636,11 +2638,17 @@ async function pollLineLive(){
       .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
     DB.meta = DB.meta || {};
     const firstRun = DB.meta.lineLastTs == null;
+    let changed = false;
+    if(!DB.meta.lineOnlyTagClean){
+      const before = DB.tasks.length;
+      DB.tasks = DB.tasks.filter(t => t.source !== 'line' || lineTagsTarget(t.line_text));
+      DB.meta.lineOnlyTagClean = true; changed = true;
+      if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+LINE_ONLY_TAG+' '+(before - DB.tasks.length)+' งาน');
+    }
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
-    let changed = false;
     for(const r of fresh){
-      if(r.type === 'TASK' && r.message){
+      if(r.type === 'TASK' && lineTagsTarget(r.message)){
         if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
         const t = lineTaskFromRow(r);
         DB.tasks.push(t); changed = true;
