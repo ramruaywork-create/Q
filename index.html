@@ -2608,6 +2608,16 @@ function renderTaskList(){
     </div>`;
   }).join('');
 }
+/* งานจาก LINE เปลี่ยนเป็น "เสร็จแล้ว" → ให้บอทแท็กคนสั่งงานกลับในกลุ่ม (ทำที่เซิร์ฟเวอร์ ส่งครั้งเดียว) */
+async function notifyLineDone(t){
+  if(!apiMode || !t || t.source !== 'line' || t.status !== 'done' || !t.line_group || t.line_done_at) return;
+  try{
+    await flushPush(); // ให้เซิร์ฟเวอร์รู้ก่อนว่างานเสร็จแล้ว
+    const {j} = await api('line_done', {id: t.id});
+    if(j.ok && j.sent){ toast('แจ้งในกลุ่ม LINE แล้ว: @'+(t.line_sender || 'คนสั่งงาน')+' ทำแล้ว'); if(await pullDB()) renderCurrentViewQuiet(); }
+    else if(!j.ok) toast(j.error || 'แจ้งกลับ LINE ไม่สำเร็จ', 'error');
+  }catch(e){ toast('แจ้งกลับ LINE ไม่สำเร็จ (เชื่อมต่อไม่ได้)', 'error'); }
+}
 function refreshTaskView(){ if(currentView === 'tasks') renderTasks(); }
 const taskShop = t => t.shop_id ? DB.shops.find(s => s.id === t.shop_id) : null;
 const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_code || ''); };
@@ -2663,7 +2673,7 @@ function lineTaskFromRow(r){
   const created = Number(r.id) ? new Date(Number(r.id)).toISOString() : nowISO();
   const t = {id:'line-'+r.id, title:(text || r.title || r.message).slice(0, 200), detail:(r.sender ? r.sender+': ' : '')+r.message,
     assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : shopCode,
-    due: lineDue(r.due), priority:2, source:'line', line_text:r.message, created_at:created, created_by:'line'};
+    due: lineDue(r.due), priority:2, source:'line', line_text:r.message, line_group:r.group, line_user:r.user, line_sender:r.sender, created_at:created, created_by:'line'};
   setTaskStatus(t, 'todo');
   t.updated_at = created;
   return t;
@@ -2680,7 +2690,7 @@ async function pollLineLive(){
   try{
     const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
     const v = (c, i) => String(c[i]?.v ?? '').trim();
-    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6)}; })
+    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8)}; })
       .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
     DB.meta = DB.meta || {};
     const firstRun = DB.meta.lineLastTs == null;
@@ -2691,6 +2701,10 @@ async function pollLineLive(){
       DB.meta.lineOnlyTagClean = true; changed = true;
       if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+LINE_ONLY_TAG+' '+(before - DB.tasks.length)+' งาน');
     }
+    rows.forEach(r => {
+      const t = r.group && r.user && DB.tasks.find(x => x.id === 'line-'+r.id && !x.line_group);
+      if(t){ t.line_group = r.group; t.line_user = r.user; t.line_sender = r.sender; changed = true; }
+    });
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
@@ -2761,7 +2775,8 @@ function openTaskDialog(t){
       due: modal.querySelector('#tkDue').value, priority: +modal.querySelector('#tkPrio').value
     };
     const status = modal.querySelector('#tkStatus').value;
-    if(t){ Object.assign(t, data); setTaskStatus(t, status); logHistory('task_edit', title); }
+    const wasDone = t && t.status === 'done';
+    if(t){ Object.assign(t, data); setTaskStatus(t, status); logHistory('task_edit', title); if(!wasDone && status === 'done') setTimeout(() => notifyLineDone(t), 0); }
     else {
       const nt = {id: uid(), created_at: nowISO(), created_by: currentUser.id, ...data};
       setTaskStatus(nt, status); DB.tasks.push(nt); logHistory('task_add', title);
@@ -2820,7 +2835,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const id = e.target.dataset && e.target.dataset.taskStatus;
-  if(id){ const x = DB.tasks.find(k => k.id === id); if(x){ setTaskStatus(x, e.target.value); saveDB(); renderTasks(); } return; }
+  if(id){ const x = DB.tasks.find(k => k.id === id); if(x){ const was = x.status; setTaskStatus(x, e.target.value); saveDB(); renderTasks(); if(was !== 'done' && x.status === 'done') notifyLineDone(x); } return; }
   if(e.target.id === 'taskPerson'){ taskState.person = e.target.value; $('#taskList').innerHTML = renderTaskList(); if(window.lucide) lucide.createIcons(); return; }
   if(e.target.id === 'taskSort'){ taskState.sort = e.target.value; $('#taskList').innerHTML = renderTaskList(); if(window.lucide) lucide.createIcons(); return; }
   if(e.target.id === 'taskImport'){

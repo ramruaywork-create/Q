@@ -219,6 +219,37 @@ Deno.serve(async (req) => {
       return respond(r === true ? { ok: true } : { ok: false, error: r });
     }
 
+    /* งานจาก LINE เสร็จแล้ว → บอทส่งข้อความเข้ากลุ่มเดิม แท็กคนสั่งงาน ("@W ทำแล้ว — ชื่องาน")
+       ต้องตั้ง secret LINE_CHANNEL_ACCESS_TOKEN (Channel access token ของบอท) ใน Supabase */
+    if (action === "line_done") {
+      if (req.method !== "POST") return respond({ ok: false }, 405);
+      const lineToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
+      if (!lineToken) return respond({ ok: false, error: "ยังไม่ได้ตั้งค่า LINE token ใน Supabase" });
+      const id = String((await readJson(req)).id ?? "");
+      const claim = await withDb((db) => { // จองก่อนส่ง กันส่งซ้ำเมื่อหลายเครื่องกดพร้อมกัน
+        if (!activeUser(db, uid)) return null;
+        const t = db.tasks.find((x: Obj) => x.id === id);
+        if (!t || t.status !== "done" || !t.line_group || !t.line_user || t.line_done_at) return null;
+        t.line_done_at = nowIso(); t.updated_at = nowIso();
+        return { group: t.line_group as string, user: t.line_user as string, title: String(t.title || "") };
+      }, true);
+      if (!claim) return respond({ ok: true, sent: false });
+      const r = await fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + lineToken },
+        body: JSON.stringify({ to: claim.group, messages: [{
+          type: "textV2", text: "{requester} ทำแล้ว" + (claim.title ? " — " + claim.title.slice(0, 200) : ""),
+          substitution: { requester: { type: "mention", mentionee: { type: "user", userId: claim.user } } },
+        }] }),
+      });
+      if (!r.ok) {
+        console.error("LINE push failed", r.status, await r.text());
+        await withDb((db) => { const t = db.tasks.find((x: Obj) => x.id === id); if (t) { delete t.line_done_at; t.updated_at = nowIso(); } }, true);
+        return respond({ ok: false, error: "ส่งข้อความ LINE ไม่สำเร็จ (" + r.status + ")" });
+      }
+      return respond({ ok: true, sent: true });
+    }
+
     /* ย้ายข้อมูลจากโหมดเครื่องเดียว (localStorage ของ Admin) ขึ้นเซิร์ฟเวอร์ — ทำได้ครั้งเดียว */
     if (action === "import_local") {
       if (req.method !== "POST") return respond({ ok: false }, 405);
