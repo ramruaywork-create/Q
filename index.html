@@ -2534,7 +2534,7 @@ function renderTasks(){
     <div id="taskList" class="space-y-2">${renderTaskList()}</div>
     <div class="flex flex-wrap gap-2 justify-center pt-2">
       <label class="btn btn-ghost btn-sm cursor-pointer" title="นำเข้าไฟล์ JSON ที่สำรองจากแอป 'ติดตามงาน' ตัวเดิม"><i data-lucide="upload" class="w-3.5 h-3.5"></i>นำเข้าจากแอปติดตามงานเดิม<input type="file" id="taskImport" accept=".json" class="hidden"></label>
-      <button class="btn btn-danger btn-sm" data-task-clear-done><i data-lucide="eraser" class="w-3.5 h-3.5"></i>ลบงานที่เสร็จแล้ว</button>
+      ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-task-clear-done><i data-lucide="eraser" class="w-3.5 h-3.5"></i>ลบงานที่เสร็จแล้ว</button>` : ''}
     </div>
   </div>`;
   if(window.lucide) lucide.createIcons();
@@ -2569,7 +2569,7 @@ function renderTaskList(){
         <select class="input !w-auto !py-1 text-sm" data-task-status="${t.id}">${Object.entries(TASK_STATUS).map(([k,v]) => `<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}</select>
         <div class="flex gap-1">
           ${isAdmin() ? `<button class="btn btn-ghost btn-sm" data-task-edit="${t.id}">แก้ไข</button>` : ''}
-          <button class="btn btn-danger btn-sm" data-task-del="${t.id}">ลบ</button>
+          ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-task-del="${t.id}">ลบ</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -2771,6 +2771,7 @@ document.addEventListener('click', e => {
   if(t.dataset.taskFilter){ taskState.filter = t.dataset.taskFilter; renderTasks(); return; }
   if(t.hasAttribute('data-task-add')){ openTaskDialog(); return; }
   if(t.dataset.taskEdit){ if(!isAdmin()) return; const x = DB.tasks.find(k => k.id === t.dataset.taskEdit); if(x) openTaskDialog(x); return; }
+  if((t.dataset.taskDel || t.hasAttribute('data-task-clear-done')) && !isAdmin()) return;
   if(t.dataset.taskDel){
     const x = DB.tasks.find(k => k.id === t.dataset.taskDel);
     if(x && confirm('ลบงาน “'+x.title+'” ?')){ DB.tasks = DB.tasks.filter(k => k !== x); logHistory('task_delete', x.title); saveDB(); toast('ลบงานแล้ว'); renderTasks(); }
