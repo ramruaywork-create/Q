@@ -488,8 +488,22 @@ function isUserBusy(){
   if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
   return false;
 }
+/* อัปเดตเบื้องหลัง: วาดหน้าใหม่แบบไม่มีเอฟเฟกต์จางเข้า (ไม่งั้นหน้าจอกระพิบทุกครั้งที่ซิงค์) */
+function renderCurrentViewQuiet(){
+  const y = window.scrollY;
+  renderCurrentView();
+  document.querySelectorAll('#view .fade-in').forEach(el => el.classList.remove('fade-in'));
+  if(window.lucide) lucide.createIcons();
+  window.scrollTo(0, y);
+}
+let lastRefreshAt = 0;
 async function refreshRuntimeState(){
   if(isUserBusy()) return;
+  const now = Date.now();
+  if(now - lastRefreshAt < 10000) return; // สลับหน้าต่างไปมา (focus) ไม่ต้องดึงถี่กว่า 10 วินาที
+  lastRefreshAt = now;
+  const before = DB ? JSON.stringify(DB) : '';
+  const userBefore = currentUser ? JSON.stringify(currentUser) : '';
   try{
     if(apiMode){
       if(!(await pullDB())) return;
@@ -506,9 +520,8 @@ async function refreshRuntimeState(){
       }
     }
     ensureDailyResetState();
-    if(currentUser) {
-      renderCurrentView();
-    }
+    // วาดใหม่เฉพาะเมื่อข้อมูลเปลี่ยนจริง
+    if(currentUser && (JSON.stringify(DB) !== before || JSON.stringify(currentUser) !== userBefore)) renderCurrentViewQuiet();
   }catch(e){}
 }
 let saveErrorShown = null;
@@ -2701,7 +2714,7 @@ async function pollLineLive(){
       }
     }
     if(rows.length){ const maxTs = Math.max(last, ...rows.map(r => Number(r.id) || 0)); if(maxTs !== last){ DB.meta.lineLastTs = maxTs; changed = true; } }
-    if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderTasks(); }
+    if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderCurrentViewQuiet(); }
     setLineLive(true, 'อัปเดต ' + new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
   }catch(e){
     setLineLive(false, 'เชื่อมต่อชีตงาน LINE ไม่ได้ (ชีตแชร์แบบ “ทุกคนที่มีลิงก์ดูได้” หรือยัง?)');
