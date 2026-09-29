@@ -2480,9 +2480,15 @@ function setTaskStatus(t, s){
   t.done_at = s === 'done' ? (t.done_at || nowISO()) : null;
   t.updated_at = nowISO();
 }
+/* Admin เห็นทุกงาน · User เห็นงานที่มอบหมายให้ตัวเอง, งานของร้านที่ตัวเองดูแล และงานที่ตัวเองสร้าง */
+function visibleTasks(){
+  if(isAdmin()) return DB.tasks;
+  const shops = new Set(getAssignedShopIds(currentUser));
+  return DB.tasks.filter(t => t.assignee_id === currentUser.id || (t.shop_id && shops.has(t.shop_id)) || t.created_by === currentUser.id);
+}
 function taskRows(){
   const q = taskState.q.trim().toLowerCase();
-  const rows = DB.tasks.filter(t =>
+  const rows = visibleTasks().filter(t =>
     (taskState.filter === 'all' || (taskState.filter === 'late' ? taskIsLate(t) : t.status === taskState.filter)) &&
     (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? !t.assignee_id : t.assignee_id === taskState.person)) &&
     (!q || [t.title, t.detail, taskPerson(t), taskShopLabel(t)].join(' ').toLowerCase().includes(q)));
@@ -2495,7 +2501,7 @@ function taskRows(){
   return rows;
 }
 function renderTasks(){
-  const all = DB.tasks;
+  const all = visibleTasks();
   const c = {all: all.length, todo:0, doing:0, done:0, late:0};
   all.forEach(t => { c[t.status] = (c[t.status]||0) + 1; if(taskIsLate(t)) c.late++; });
   const pct = c.all ? Math.round(c.done / c.all * 100) : 0;
@@ -2514,8 +2520,8 @@ function renderTasks(){
     <div class="grid grid-cols-1 md:grid-cols-[1fr_12rem_12rem_auto] gap-2">
       <input id="taskQ" class="input" type="search" placeholder="ค้นหางาน / ผู้รับผิดชอบ…" value="${esc(taskState.q)}">
       <select id="taskPerson" class="input">
-        <option value="">ทุกคน</option><option value="me" ${taskState.person==='me'?'selected':''}>งานของฉัน</option><option value="-" ${taskState.person==='-'?'selected':''}>รอมอบหมาย (${DB.tasks.filter(t => !t.assignee_id && t.status !== 'done').length})</option>
-        ${users.map(u => `<option value="${u.id}" ${taskState.person===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
+        <option value="">ทุกคน</option><option value="me" ${taskState.person==='me'?'selected':''}>งานของฉัน</option><option value="-" ${taskState.person==='-'?'selected':''}>รอมอบหมาย (${all.filter(t => !t.assignee_id && t.status !== 'done').length})</option>
+        ${isAdmin() ? users.map(u => `<option value="${u.id}" ${taskState.person===u.id?'selected':''}>${esc(u.name)}</option>`).join('') : ''}
       </select>
       <select id="taskSort" class="input">
         <option value="due" ${taskState.sort==='due'?'selected':''}>เรียงตามกำหนดส่ง</option>
@@ -2535,7 +2541,7 @@ function renderTasks(){
 }
 function renderTaskList(){
   const rows = taskRows();
-  if(!rows.length) return `<div class="card p-10 text-center text-slate-400">${DB.tasks.length ? 'ไม่พบงานที่ตรงกับตัวกรอง' : 'ยังไม่มีงาน — กด “เพิ่มงาน” เพื่อเริ่มต้น'}</div>`;
+  if(!rows.length) return `<div class="card p-10 text-center text-slate-400">${visibleTasks().length ? 'ไม่พบงานที่ตรงกับตัวกรอง' : isAdmin() ? 'ยังไม่มีงาน — กด “เพิ่มงาน” เพื่อเริ่มต้น' : 'ยังไม่มีงานของคุณหรือร้านที่คุณดูแล'}</div>`;
   const border = {todo:'#94a3b8', doing:'#d97706', done:'#16a34a'};
   return rows.map(t => {
     const late = taskIsLate(t), dueToday = t.status !== 'done' && t.due === todayISO();
@@ -2658,7 +2664,7 @@ async function pollLineLive(){
         if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
         const t = lineTaskFromRow(r);
         DB.tasks.push(t); changed = true;
-        if(!firstRun) toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info');
+        if(!firstRun && visibleTasks().includes(t)) toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info');
       }else if(r.type === 'DONE'){
         let best = null, score = 0;
         DB.tasks.filter(t => t.status !== 'done').forEach(t => {
@@ -2771,9 +2777,10 @@ document.addEventListener('click', e => {
     return;
   }
   if(t.hasAttribute('data-task-clear-done')){
-    const n = DB.tasks.filter(k => k.status === 'done').length;
+    const mine = new Set(visibleTasks().filter(k => k.status === 'done'));
+    const n = mine.size;
     if(!n){ toast('ไม่มีงานที่เสร็จแล้ว','info'); return; }
-    if(confirm('ลบงานที่เสร็จแล้ว '+n+' งาน?')){ DB.tasks = DB.tasks.filter(k => k.status !== 'done'); logHistory('task_clear_done', n+' งาน'); saveDB(); toast('ลบแล้ว '+n+' งาน'); renderTasks(); }
+    if(confirm('ลบงานที่เสร็จแล้ว '+n+' งาน?')){ DB.tasks = DB.tasks.filter(k => !mine.has(k)); logHistory('task_clear_done', n+' งาน'); saveDB(); toast('ลบแล้ว '+n+' งาน'); renderTasks(); }
   }
 });
 document.addEventListener('change', e => {
