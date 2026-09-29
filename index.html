@@ -750,6 +750,7 @@ function showApp(){
   let back = null; try{ back = sessionStorage.getItem('sku_return_view'); sessionStorage.removeItem('sku_return_view'); }catch(e){}
   navTo(back && NAV.some(n => n.id === back && (!n.admin || isAdmin())) ? back : 'dashboard');
   warnDefaultPassword();
+  startLineLive();
 }
 
 /* ============================================================
@@ -2483,7 +2484,7 @@ function taskRows(){
   const rows = DB.tasks.filter(t =>
     (taskState.filter === 'all' || (taskState.filter === 'late' ? taskIsLate(t) : t.status === taskState.filter)) &&
     (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? !taskPerson(t) : t.assignee_id === taskState.person)) &&
-    (!q || [t.title, t.detail, taskPerson(t)].join(' ').toLowerCase().includes(q)));
+    (!q || [t.title, t.detail, taskPerson(t), taskShopLabel(t)].join(' ').toLowerCase().includes(q)));
   const doneLast = (a, b) => (a.status === 'done') - (b.status === 'done');
   const byDue = (a, b) => (a.due || '9').localeCompare(b.due || '9');
   rows.sort((a, b) => doneLast(a, b) || (
@@ -2522,6 +2523,7 @@ function renderTasks(){
       </select>
       <button class="btn btn-primary whitespace-nowrap" data-task-add><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มงาน</button>
     </div>
+    <div class="text-xs text-slate-500 flex items-center gap-1.5"><span id="lineLiveDot" class="inline-block w-2 h-2 rounded-full ${lineLive.ok===true?'bg-green-500':lineLive.ok===false?'bg-red-500':'bg-slate-300'}"></span>LINE สด · <span id="lineLiveTime">${esc(lineLive.msg)}</span></div>
     <div id="taskList" class="space-y-2">${renderTaskList()}</div>
     <div class="flex flex-wrap gap-2 justify-center pt-2">
       <label class="btn btn-ghost btn-sm cursor-pointer" title="นำเข้าไฟล์ JSON ที่สำรองจากแอป 'ติดตามงาน' ตัวเดิม"><i data-lucide="upload" class="w-3.5 h-3.5"></i>นำเข้าจากแอปติดตามงานเดิม<input type="file" id="taskImport" accept=".json" class="hidden"></label>
@@ -2542,7 +2544,9 @@ function renderTaskList(){
         <div class="font-semibold break-words ${t.status==='done'?'line-through text-slate-400':''}">${esc(t.title)}</div>
         ${t.detail ? `<div class="text-sm text-slate-500 whitespace-pre-wrap break-words mt-0.5">${esc(t.detail)}</div>` : ''}
         <div class="flex flex-wrap gap-1.5 mt-2">
-          ${person ? `<span class="pill pill-pending"><i data-lucide="user" class="w-3 h-3"></i>${esc(person)}</span>` : ''}
+          ${t.source === 'line' ? `<span class="pill" style="background:#06c755;color:#fff" title="${esc(t.line_text||'')}">LINE</span>` : ''}
+          ${person ? `<span class="pill pill-tiktok">@${esc(person)}</span>` : ''}
+          ${taskShopLabel(t) ? `<span class="pill pill-bigseller"><i data-lucide="store" class="w-3 h-3"></i>${taskShop(t) ? esc(taskShop(t).platform)+' · ' : ''}${esc(taskShopLabel(t))}</span>` : ''}
           ${t.due ? `<span class="pill ${late ? 'bg-red-600 text-white' : dueToday ? 'pill-progress' : 'pill-pending'}"><i data-lucide="calendar" class="w-3 h-3"></i>${fmtDateTH(t.due)}${late ? ' · เลยกำหนด' : dueToday ? ' · วันนี้' : ''}</span>` : ''}
           <span class="pill ${t.priority==3 ? 'bg-red-100 text-red-700' : t.priority==2 ? 'pill-progress' : 'pill-pending'}">${TASK_PRIO[t.priority] || '-'}</span>
           ${t.status==='done' && t.done_at ? `<span class="pill pill-done"><i data-lucide="check" class="w-3 h-3"></i>${fmtDateTH(t.done_at)}</span>` : ''}
@@ -2559,6 +2563,110 @@ function renderTaskList(){
   }).join('');
 }
 function refreshTaskView(){ if(currentView === 'tasks') renderTasks(); }
+const taskShop = t => t.shop_id ? DB.shops.find(s => s.id === t.shop_id) : null;
+const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_code || ''); };
+
+/* ---------- งานจากกลุ่ม LINE ----------
+   บอท LINE (ตัวเดียวกับเว็บ personnel เดิม) เขียนข้อความที่แท็กคนลง Google Sheet:
+   ts | type (TASK/DONE) | title | person | due | sender | message
+   หน้านี้อ่านชีตทุก 30 วินาที แล้วเพิ่มเป็นงาน เช่น "@Sofia Alvarez /AM/ แก้หน่อย"
+   → งาน "แก้หน่อย" · @Sofia Alvarez · ร้าน AM  (ชีตต้องแชร์แบบ "ทุกคนที่มีลิงก์ดูได้") */
+const LINE_LIVE_SHEET_ID = '1a9i7Q-liFcLHIhu6VXdynHy2yrrs1YpUGxXxKx7pnyE';
+const LINE_LIVE_SHEET = 'Untitled';
+const LINE_POLL_MS = 30000;
+const lineLive = {ok:null, msg:'กำลังเชื่อมต่อ…', timer:null, busy:false};
+let gvizSeq = 0;
+function gviz(sheetId, sheet){ // JSONP — Google Sheet ไม่เปิด CORS ให้ fetch ตรงๆ
+  return new Promise((resolve, reject) => {
+    const cb = '__gviz' + (++gvizSeq) + '_' + Date.now();
+    const el = document.createElement('script');
+    const done = () => { delete window[cb]; el.remove(); clearTimeout(timer); };
+    const timer = setTimeout(() => { done(); reject(new Error('timeout')); }, 15000);
+    window[cb] = json => { done(); json && json.status !== 'error' ? resolve(json) : reject(new Error('sheet')); };
+    el.onerror = () => { done(); reject(new Error('load')); };
+    el.src = 'https://docs.google.com/spreadsheets/d/'+sheetId+'/gviz/tq?tqx=out:json;responseHandler:'+cb+'&sheet='+encodeURIComponent(sheet)+'&headers=1&_='+Date.now();
+    document.head.appendChild(el);
+  });
+}
+const normText = s => String(s || '').toLowerCase().replace(/[\s\-_.,!?()"'“”]/g, '');
+function textSimilarity(a, b){
+  a = normText(a); b = normText(b);
+  if(!a || !b) return 0;
+  if(a.includes(b) || b.includes(a)) return 1;
+  const grams = x => { const g = new Set(); for(let i = 0; i < x.length - 1; i++) g.add(x.slice(i, i+2)); return g; };
+  const A = grams(a), B = grams(b); let hit = 0; A.forEach(g => { if(B.has(g)) hit++; });
+  return (2 * hit) / (A.size + B.size || 1);
+}
+function lineDue(v){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = String(v).match(/^Date\((\d+),(\d+),(\d+)/); // Google Sheet ส่งวันที่มาเป็น Date(y,m0,d)
+  return m ? m[1]+'-'+pad2(+m[2]+1)+'-'+pad2(+m[3]) : '';
+}
+function lineTaskFromRow(r){
+  const person = /^[.\-]?$/.test(r.person) ? '' : r.person;  // "." / "-" = บอทไม่รู้ว่าแท็กใคร
+  let text = r.message;
+  if(person && text.includes('@'+person)) text = text.replace('@'+person, ' ');
+  else text = text.replace(/^\s*@\S+/, ' ');
+  let shopCode = '';
+  text = text.replace(/(^|\s)\/([^\/\s]+)\/(?=\s|$)/, (m0, sp, code) => { shopCode = code; return ' '; });
+  text = text.replace(/\s+/g, ' ').trim();
+  const user = person ? DB.users.find(u => String(u.name).trim().toLowerCase() === person.toLowerCase()) : null;
+  const shop = shopCode ? DB.shops.find(x => String(x.code).toUpperCase() === shopCode.toUpperCase()) : null;
+  const created = Number(r.id) ? new Date(Number(r.id)).toISOString() : nowISO();
+  const t = {id:'line-'+r.id, title:(text || r.title || r.message).slice(0, 200), detail:(r.sender ? r.sender+': ' : '')+r.message,
+    assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : shopCode,
+    due: lineDue(r.due), priority:2, source:'line', line_text:r.message, created_at:created, created_by:'line'};
+  setTaskStatus(t, 'todo');
+  return t;
+}
+function setLineLive(ok, msg){
+  lineLive.ok = ok; lineLive.msg = msg;
+  const dot = document.getElementById('lineLiveDot'), tm = document.getElementById('lineLiveTime');
+  if(dot) dot.className = 'inline-block w-2 h-2 rounded-full ' + (ok ? 'bg-green-500' : 'bg-red-500');
+  if(tm) tm.textContent = msg;
+}
+async function pollLineLive(){
+  if(!currentUser || !DB || lineLive.busy) return;
+  lineLive.busy = true;
+  try{
+    const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
+    const v = (c, i) => String(c[i]?.v ?? '').trim();
+    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6)}; })
+      .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
+    DB.meta = DB.meta || {};
+    const firstRun = DB.meta.lineLastTs == null;
+    const last = Number(DB.meta.lineLastTs) || 0;
+    const fresh = rows.filter(r => Number(r.id) > last);
+    let changed = false;
+    for(const r of fresh){
+      if(r.type === 'TASK' && r.message){
+        if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
+        const t = lineTaskFromRow(r);
+        DB.tasks.push(t); changed = true;
+        if(!firstRun) toast('งานใหม่จาก LINE: '+t.title+(taskPerson(t) ? ' — @'+taskPerson(t) : ''), 'info');
+      }else if(r.type === 'DONE'){
+        let best = null, score = 0;
+        DB.tasks.filter(t => t.status !== 'done').forEach(t => {
+          let sc = textSimilarity(t.title, r.title || r.message);
+          if(r.person && taskPerson(t) && normText(taskPerson(t)) === normText(r.person)) sc += 0.15;
+          if(sc > score){ score = sc; best = t; }
+        });
+        if(best && score >= 0.45){ setTaskStatus(best, 'done'); changed = true; if(!firstRun) toast('เสร็จแล้ว (จาก LINE): '+best.title); }
+      }
+    }
+    if(rows.length){ const maxTs = Math.max(last, ...rows.map(r => Number(r.id) || 0)); if(maxTs !== last){ DB.meta.lineLastTs = maxTs; changed = true; } }
+    if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderTasks(); }
+    setLineLive(true, 'อัปเดต ' + new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
+  }catch(e){
+    setLineLive(false, 'เชื่อมต่อชีตงาน LINE ไม่ได้ (ชีตแชร์แบบ “ทุกคนที่มีลิงก์ดูได้” หรือยัง?)');
+  }finally{ lineLive.busy = false; }
+}
+function startLineLive(){
+  if(lineLive.timer) return;
+  pollLineLive();
+  lineLive.timer = setInterval(() => { if(!document.hidden) pollLineLive(); }, LINE_POLL_MS);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) pollLineLive(); });
+}
 function openTaskDialog(t){
   const users = DB.users.filter(u => u.active || (t && u.id === t.assignee_id));
   const modal = document.createElement('div');
