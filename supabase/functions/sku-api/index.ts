@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
         const t = db.tasks.find((x: Obj) => x.id === id);
         if (!t || t.status !== "done" || !t.line_group || !t.line_user || t.line_done_at) return null;
         t.line_done_at = nowIso(); t.updated_at = nowIso();
-        return { group: t.line_group as string, user: t.line_user as string, title: String(t.title || "") };
+        return { group: t.line_group as string, user: t.line_user as string, title: String(t.title || ""), quote: String(t.line_quote || "") };
       }, true);
       if (!claim) return respond({ ok: true, sent: false });
       const r = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -240,6 +240,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ to: claim.group, messages: [{
           type: "textV2", text: "{requester} ทำแล้ว" + (claim.title ? " — " + claim.title.slice(0, 200) : ""),
           substitution: { requester: { type: "mention", mentionee: { type: "user", userId: claim.user } } },
+          ...(claim.quote ? { quoteToken: claim.quote } : {}), // มี quoteToken จากชีต → ขึ้นเป็น Reply ข้อความเดิม
         }] }),
       });
       if (!r.ok) {
