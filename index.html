@@ -2599,10 +2599,6 @@ function renderTaskList(){
         </div>
       </div>
       <div class="flex sm:flex-col gap-2 items-center sm:items-end justify-between">
-        ${isAdmin() ? `<select class="input !w-auto !py-1 text-sm ${assignee ? '' : 'border-amber-400'}" data-task-assign="${t.id}" title="มอบหมายงาน">
-          <option value="">— มอบหมายให้ —</option>
-          ${DB.users.filter(u => u.active || u.id === t.assignee_id).map(u => `<option value="${u.id}" ${t.assignee_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
-        </select>` : ''}
         <select class="input !w-auto !py-1 text-sm" data-task-status="${t.id}">${Object.entries(TASK_STATUS).map(([k,v]) => `<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}</select>
         <div class="flex gap-1">
           ${isAdmin() ? `<button class="btn btn-ghost btn-sm" data-task-edit="${t.id}">แก้ไข</button>` : ''}
@@ -2737,8 +2733,8 @@ function openTaskDialog(t){
         <label class="block text-sm text-slate-600">ชื่องาน *<input id="tkTitle" class="input mt-1" maxlength="200" value="${esc(t?.title)}"></label>
         <label class="block text-sm text-slate-600">รายละเอียด<textarea id="tkDetail" class="input mt-1" rows="3">${esc(t?.detail)}</textarea></label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label class="block text-sm text-slate-600">ผู้รับผิดชอบ
-            <select id="tkPerson" class="input mt-1"><option value="">— ไม่ระบุ —</option>
+          <label class="block text-sm text-slate-600">มอบหมายให้
+            <select id="tkPerson" class="input mt-1"><option value="">— รอมอบหมาย —</option>
               ${users.map(u => `<option value="${u.id}" ${t?.assignee_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
               ${t && !t.assignee_id && t.person ? `<option value="text:${esc(t.person)}" selected>${esc(t.person)} (ไม่มีในระบบ)</option>` : ''}
             </select></label>
@@ -2761,7 +2757,7 @@ function openTaskDialog(t){
     const data = {
       title, detail: modal.querySelector('#tkDetail').value.trim(),
       assignee_id: pv && !pv.startsWith('text:') ? pv : null,
-      person: pv.startsWith('text:') ? pv.slice(5) : '',
+      person: pv.startsWith('text:') ? pv.slice(5) : (t?.person || ''),
       due: modal.querySelector('#tkDue').value, priority: +modal.querySelector('#tkPrio').value
     };
     const status = modal.querySelector('#tkStatus').value;
@@ -2823,15 +2819,6 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => {
-  const aid = e.target.dataset && e.target.dataset.taskAssign;
-  if(aid){
-    const x = DB.tasks.find(k => k.id === aid); if(!x) return;
-    const u = e.target.value ? userById(e.target.value) : null;
-    x.assignee_id = u ? u.id : null; x.updated_at = nowISO();
-    logHistory('task_assign', x.title + ' → ' + (u ? u.name : 'ยกเลิกการมอบหมาย'));
-    saveDB(); toast(u ? 'มอบหมายให้ '+u.name+' แล้ว' : 'ยกเลิกการมอบหมายแล้ว'); renderTasks();
-    return;
-  }
   const id = e.target.dataset && e.target.dataset.taskStatus;
   if(id){ const x = DB.tasks.find(k => k.id === id); if(x){ setTaskStatus(x, e.target.value); saveDB(); renderTasks(); } return; }
   if(e.target.id === 'taskPerson'){ taskState.person = e.target.value; $('#taskList').innerHTML = renderTaskList(); if(window.lucide) lucide.createIcons(); return; }
