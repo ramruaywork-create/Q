@@ -2480,10 +2480,11 @@ function setTaskStatus(t, s){
   t.done_at = s === 'done' ? (t.done_at || nowISO()) : null;
   t.updated_at = nowISO();
 }
-/* Admin เห็นทุกงาน · User เห็นเฉพาะงานที่ Admin มอบหมายให้ตัวเอง */
+/* Admin เห็นทุกงาน · User เห็นงานที่มอบหมายให้ตัวเอง, งานของร้านที่ตัวเองดูแล และงานที่ตัวเองสร้าง */
 function visibleTasks(){
   if(isAdmin()) return DB.tasks;
-  return DB.tasks.filter(t => t.assignee_id === currentUser.id);
+  const shops = new Set(getAssignedShopIds(currentUser));
+  return DB.tasks.filter(t => t.assignee_id === currentUser.id || (t.shop_id && shops.has(t.shop_id)) || t.created_by === currentUser.id);
 }
 function taskRows(){
   const q = taskState.q.trim().toLowerCase();
@@ -2540,7 +2541,7 @@ function renderTasks(){
 }
 function renderTaskList(){
   const rows = taskRows();
-  if(!rows.length) return `<div class="card p-10 text-center text-slate-400">${visibleTasks().length ? 'ไม่พบงานที่ตรงกับตัวกรอง' : isAdmin() ? 'ยังไม่มีงาน — กด “เพิ่มงาน” เพื่อเริ่มต้น' : 'ยังไม่มีงานที่มอบหมายให้คุณ'}</div>`;
+  if(!rows.length) return `<div class="card p-10 text-center text-slate-400">${visibleTasks().length ? 'ไม่พบงานที่ตรงกับตัวกรอง' : isAdmin() ? 'ยังไม่มีงาน — กด “เพิ่มงาน” เพื่อเริ่มต้น' : 'ยังไม่มีงานของคุณหรือร้านที่คุณดูแล'}</div>`;
   const border = {todo:'#94a3b8', doing:'#d97706', done:'#16a34a'};
   return rows.map(t => {
     const late = taskIsLate(t), dueToday = t.status !== 'done' && t.due === todayISO();
@@ -2551,8 +2552,9 @@ function renderTaskList(){
         ${t.detail ? `<div class="text-sm text-slate-500 whitespace-pre-wrap break-words mt-0.5">${esc(t.detail)}</div>` : ''}
         <div class="flex flex-wrap gap-1.5 mt-2">
           ${t.source === 'line' ? `<span class="pill" style="background:#06c755;color:#fff" title="${esc(t.line_text||'')}">LINE</span>` : ''}
-          ${assignee ? `<span class="pill pill-tiktok" title="${t.person ? 'แท็กใน LINE: @'+esc(t.person) : ''}">@${esc(assignee.name)}</span>`
-                     : `${t.person ? `<span class="pill pill-tiktok" title="ชื่อที่ถูกแท็ก">@${esc(t.person)}</span>` : ''}${t.status !== 'done' ? `<span class="pill pill-progress"><i data-lucide="user-plus" class="w-3 h-3"></i>รอมอบหมาย</span>` : ''}`}
+          ${t.person ? `<span class="pill pill-tiktok" title="ชื่อที่ถูกแท็ก">@${esc(t.person)}</span>` : ''}
+          ${assignee ? `<span class="pill" style="background:#ccfbf1;color:#0f766e"><i data-lucide="user-check" class="w-3 h-3"></i>${esc(assignee.name)}</span>`
+                     : t.status !== 'done' ? `<span class="pill pill-progress"><i data-lucide="user-plus" class="w-3 h-3"></i>รอมอบหมาย</span>` : ''}
           ${taskShopLabel(t) ? `<span class="pill pill-bigseller"><i data-lucide="store" class="w-3 h-3"></i>${taskShop(t) ? esc(taskShop(t).platform)+' · ' : ''}${esc(taskShopLabel(t))}</span>` : ''}
           ${t.due ? `<span class="pill ${late ? 'bg-red-600 text-white' : dueToday ? 'pill-progress' : 'pill-pending'}"><i data-lucide="calendar" class="w-3 h-3"></i>${fmtDateTH(t.due)}${late ? ' · เลยกำหนด' : dueToday ? ' · วันนี้' : ''}</span>` : ''}
           <span class="pill ${t.priority==3 ? 'bg-red-100 text-red-700' : t.priority==2 ? 'pill-progress' : 'pill-pending'}">${TASK_PRIO[t.priority] || '-'}</span>
