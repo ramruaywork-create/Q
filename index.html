@@ -2484,7 +2484,7 @@ function taskRows(){
   const q = taskState.q.trim().toLowerCase();
   const rows = DB.tasks.filter(t =>
     (taskState.filter === 'all' || (taskState.filter === 'late' ? taskIsLate(t) : t.status === taskState.filter)) &&
-    (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? !taskPerson(t) : t.assignee_id === taskState.person)) &&
+    (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? !t.assignee_id : t.assignee_id === taskState.person)) &&
     (!q || [t.title, t.detail, taskPerson(t), taskShopLabel(t)].join(' ').toLowerCase().includes(q)));
   const doneLast = (a, b) => (a.status === 'done') - (b.status === 'done');
   const byDue = (a, b) => (a.due || '9').localeCompare(b.due || '9');
@@ -2514,7 +2514,7 @@ function renderTasks(){
     <div class="grid grid-cols-1 md:grid-cols-[1fr_12rem_12rem_auto] gap-2">
       <input id="taskQ" class="input" type="search" placeholder="ค้นหางาน / ผู้รับผิดชอบ…" value="${esc(taskState.q)}">
       <select id="taskPerson" class="input">
-        <option value="">ทุกคน</option><option value="me" ${taskState.person==='me'?'selected':''}>งานของฉัน</option><option value="-" ${taskState.person==='-'?'selected':''}>ยังไม่มีผู้รับผิดชอบ</option>
+        <option value="">ทุกคน</option><option value="me" ${taskState.person==='me'?'selected':''}>งานของฉัน</option><option value="-" ${taskState.person==='-'?'selected':''}>รอมอบหมาย (${DB.tasks.filter(t => !t.assignee_id && t.status !== 'done').length})</option>
         ${users.map(u => `<option value="${u.id}" ${taskState.person===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
       </select>
       <select id="taskSort" class="input">
@@ -2539,14 +2539,16 @@ function renderTaskList(){
   const border = {todo:'#94a3b8', doing:'#d97706', done:'#16a34a'};
   return rows.map(t => {
     const late = taskIsLate(t), dueToday = t.status !== 'done' && t.due === todayISO();
-    const person = taskPerson(t);
+    const assignee = t.assignee_id ? userById(t.assignee_id) : null;
     return `<div class="card p-4 flex flex-col sm:flex-row gap-3 sm:items-start" style="border-left:4px solid ${late ? '#dc2626' : border[t.status]}">
       <div class="flex-1 min-w-0">
         <div class="font-semibold break-words ${t.status==='done'?'line-through text-slate-400':''}">${esc(t.title)}</div>
         ${t.detail ? `<div class="text-sm text-slate-500 whitespace-pre-wrap break-words mt-0.5">${esc(t.detail)}</div>` : ''}
         <div class="flex flex-wrap gap-1.5 mt-2">
           ${t.source === 'line' ? `<span class="pill" style="background:#06c755;color:#fff" title="${esc(t.line_text||'')}">LINE</span>` : ''}
-          ${person ? `<span class="pill pill-tiktok">@${esc(person)}</span>` : ''}
+          ${t.person ? `<span class="pill pill-tiktok" title="ชื่อที่ถูกแท็ก">@${esc(t.person)}</span>` : ''}
+          ${assignee ? `<span class="pill" style="background:#ccfbf1;color:#0f766e"><i data-lucide="user-check" class="w-3 h-3"></i>${esc(assignee.name)}</span>`
+                     : t.status !== 'done' ? `<span class="pill pill-progress"><i data-lucide="user-plus" class="w-3 h-3"></i>รอมอบหมาย</span>` : ''}
           ${taskShopLabel(t) ? `<span class="pill pill-bigseller"><i data-lucide="store" class="w-3 h-3"></i>${taskShop(t) ? esc(taskShop(t).platform)+' · ' : ''}${esc(taskShopLabel(t))}</span>` : ''}
           ${t.due ? `<span class="pill ${late ? 'bg-red-600 text-white' : dueToday ? 'pill-progress' : 'pill-pending'}"><i data-lucide="calendar" class="w-3 h-3"></i>${fmtDateTH(t.due)}${late ? ' · เลยกำหนด' : dueToday ? ' · วันนี้' : ''}</span>` : ''}
           <span class="pill ${t.priority==3 ? 'bg-red-100 text-red-700' : t.priority==2 ? 'pill-progress' : 'pill-pending'}">${TASK_PRIO[t.priority] || '-'}</span>
@@ -2554,6 +2556,10 @@ function renderTaskList(){
         </div>
       </div>
       <div class="flex sm:flex-col gap-2 items-center sm:items-end justify-between">
+        ${isAdmin() ? `<select class="input !w-auto !py-1 text-sm ${assignee ? '' : 'border-amber-400'}" data-task-assign="${t.id}" title="มอบหมายงาน">
+          <option value="">— มอบหมายให้ —</option>
+          ${DB.users.filter(u => u.active || u.id === t.assignee_id).map(u => `<option value="${u.id}" ${t.assignee_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
+        </select>` : ''}
         <select class="input !w-auto !py-1 text-sm" data-task-status="${t.id}">${Object.entries(TASK_STATUS).map(([k,v]) => `<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}</select>
         <div class="flex gap-1">
           <button class="btn btn-ghost btn-sm" data-task-edit="${t.id}">แก้ไข</button>
@@ -2652,7 +2658,7 @@ async function pollLineLive(){
         if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
         const t = lineTaskFromRow(r);
         DB.tasks.push(t); changed = true;
-        if(!firstRun) toast('งานใหม่จาก LINE: '+t.title+(taskPerson(t) ? ' — @'+taskPerson(t) : ''), 'info');
+        if(!firstRun) toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info');
       }else if(r.type === 'DONE'){
         let best = null, score = 0;
         DB.tasks.filter(t => t.status !== 'done').forEach(t => {
@@ -2771,6 +2777,15 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('change', e => {
+  const aid = e.target.dataset && e.target.dataset.taskAssign;
+  if(aid){
+    const x = DB.tasks.find(k => k.id === aid); if(!x) return;
+    const u = e.target.value ? userById(e.target.value) : null;
+    x.assignee_id = u ? u.id : null; x.updated_at = nowISO();
+    logHistory('task_assign', x.title + ' → ' + (u ? u.name : 'ยกเลิกการมอบหมาย'));
+    saveDB(); toast(u ? 'มอบหมายให้ '+u.name+' แล้ว' : 'ยกเลิกการมอบหมายแล้ว'); renderTasks();
+    return;
+  }
   const id = e.target.dataset && e.target.dataset.taskStatus;
   if(id){ const x = DB.tasks.find(k => k.id === id); if(x){ setTaskStatus(x, e.target.value); saveDB(); renderTasks(); } return; }
   if(e.target.id === 'taskPerson'){ taskState.person = e.target.value; $('#taskList').innerHTML = renderTaskList(); if(window.lucide) lucide.createIcons(); return; }
