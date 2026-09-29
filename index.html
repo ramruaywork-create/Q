@@ -168,7 +168,11 @@ tailwind.config = {
    ============================================================ */
 const LS_KEY = 'sku_tracker_db_v2';
 const SESS_KEY = 'sku_tracker_session_v1';
-const API_URL = 'api.php';
+/* ข้อมูลกลางของทีมอยู่ที่ Supabase (supabase/functions/sku-api — ทำงานแบบเดียวกับ api.php) */
+const API_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/sku-api';
+const TOKEN_KEY = 'sku_tracker_session_token_v1';
+const getToken = () => { try{ return localStorage.getItem(TOKEN_KEY) || ''; }catch(e){ return ''; } };
+const setToken = t => { try{ t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); }catch(e){} };
 let apiMode = false;
 /* ---------- team-mode sync: send only what changed, server merges with other users' changes ---------- */
 /* InfinityFree (and similar free hosts) sometimes answer with an "aes.js" browser-check page instead of JSON,
@@ -176,8 +180,9 @@ let apiMode = false;
 const PENDING_KEY = 'sku_tracker_pending_ops_v1';
 function isBrowserCheckPage(text){ return /aes\.js|slowAES|toNumbers\(|__test=/i.test(text||''); }
 async function api(action, body){
-  const opts = {cache:'no-store', credentials:'same-origin'};
-  if(body !== undefined){ opts.method = 'POST'; opts.headers = {'Content-Type':'application/json'}; opts.body = JSON.stringify(body); }
+  const opts = {cache:'no-store', headers:{}};
+  const tok = getToken(); if(tok) opts.headers['X-Session'] = tok;
+  if(body !== undefined){ opts.method = 'POST'; opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const r = await fetch(API_URL+'?a='+action, opts);
   const text = await r.text();
   let j = null; try{ j = JSON.parse(text); }catch(e){}
@@ -534,7 +539,7 @@ async function login(username, password){
   if(apiMode){
     try{
       const {j} = await api('login', {username, password});
-      if(j&&j.ok){ currentUser=j.user; syncSnapshot=null; pendingOps=null; await pullDB(); normalizeUserShopAccess(currentUser); return true; }
+      if(j&&j.ok){ setToken(j.token); currentUser=j.user; syncSnapshot=null; pendingOps=null; await pullDB(); normalizeUserShopAccess(currentUser); return true; }
       return false;
     }catch(e){ if(e.browserCheck){ recoverFromBrowserCheck(); } else toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่','error'); return false; }
   }
@@ -543,7 +548,7 @@ async function login(username, password){
   return false;
 }
 async function logout(){
-  if(apiMode){ try{ await flushPush(); await api('logout'); }catch(e){} }
+  if(apiMode){ try{ await flushPush(); await api('logout'); }catch(e){} setToken(''); }
   stopNewsAutoplay(); $('#modalRoot').innerHTML='';
   currentUser=null; sessionStorage.removeItem(SESS_KEY); showLogin();
 }
@@ -737,6 +742,25 @@ function showLogin(){
   $('#loginScreen').classList.remove('hidden');
   $('#appShell').classList.add('hidden');
 }
+/* ครั้งแรกที่ใช้เซิร์ฟเวอร์: ให้ Admin ย้ายข้อมูลที่เคยเก็บในเบราว์เซอร์นี้ขึ้นไปใช้ร่วมกัน (ทำได้ครั้งเดียว) */
+async function offerLocalImport(){
+  if(!apiMode || !isAdmin() || !DB || (DB.meta && DB.meta.local_imported)) return;
+  let local = null;
+  try{ if(localStorage.getItem('sku_skip_local_import')) return; local = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); }catch(e){ return; }
+  if(!local || !Array.isArray(local.products)) return;
+  const nWork = (local.worklogs || []).filter(w => !w.demo).length, nTask = (local.tasks || []).length;
+  if(!confirm('พบข้อมูลที่เคยเก็บไว้ในเบราว์เซอร์นี้\nSKU '+local.products.length+' · งานที่ทำ '+nWork+' · ติดตามงาน '+nTask+'\n\nย้ายขึ้นเซิร์ฟเวอร์ให้ทุกคนใช้ข้อมูลชุดนี้ร่วมกันไหม?\n(ทำได้ครั้งเดียว — กด ยกเลิก ถ้าเบราว์เซอร์นี้ไม่ใช่เครื่องที่มีข้อมูลล่าสุด)')){
+    try{ localStorage.setItem('sku_skip_local_import', '1'); }catch(e){}
+    return;
+  }
+  try{
+    const {j} = await api('import_local', {db: local});
+    if(!j.ok){ toast(j.error || 'ย้ายข้อมูลไม่สำเร็จ', 'error'); return; }
+    syncSnapshot = null; pendingOps = null;
+    if(await pullDB()){ currentUser = DB.users.find(u => u.id === currentUser.id) || currentUser; renderNav(); renderCurrentView(); }
+    toast('ย้ายข้อมูลขึ้นเซิร์ฟเวอร์แล้ว — ทุกคนเห็นข้อมูลชุดเดียวกัน');
+  }catch(e){ toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่ภายหลัง', 'error'); }
+}
 function showApp(){
   normalizeUserShopAccess(currentUser);
   $('#loginScreen').classList.add('hidden');
@@ -751,7 +775,7 @@ function showApp(){
   let back = null; try{ back = sessionStorage.getItem('sku_return_view'); sessionStorage.removeItem('sku_return_view'); }catch(e){}
   navTo(back && NAV.some(n => n.id === back && (!n.admin || isAdmin())) ? back : 'dashboard');
   warnDefaultPassword();
-  startLineLive();
+  offerLocalImport().finally(startLineLive);
 }
 
 /* ============================================================
@@ -2632,6 +2656,7 @@ function lineTaskFromRow(r){
     assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : shopCode,
     due: lineDue(r.due), priority:2, source:'line', line_text:r.message, created_at:created, created_by:'line'};
   setTaskStatus(t, 'todo');
+  t.updated_at = created;
   return t;
 }
 function setLineLive(ok, msg){
@@ -2831,7 +2856,7 @@ function renderSettings(){
     </div>
     ${isAdmin()?`    <div class="card p-5">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="database" class="w-5 h-5 text-brand-600"></i>ข้อมูล & การสำรอง</h3>
-      <p class="text-xs text-slate-500 mb-3">${apiMode?'โหมดทีม: ข้อมูลเก็บที่ Server และซิงค์ให้ทุกคนอัตโนมัติ':'โหมดเครื่องเดียว: ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น (ถ้าต้องการใช้เป็นทีม ให้อัปโหลดขึ้น hosting ที่มี PHP)'} · ควร Export สำรองข้อมูลเป็นประจำ</p>
+      <p class="text-xs text-slate-500 mb-3">${apiMode?'โหมดทีม: ข้อมูลเก็บที่ Server และซิงค์ให้ทุกคนอัตโนมัติ':'โหมดเครื่องเดียว: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ข้อมูลเก็บในเบราว์เซอร์นี้ชั่วคราว'} · ควร Export สำรองข้อมูลเป็นประจำ</p>
       <div class="flex flex-wrap gap-2">
         <button id="expBtn" class="btn btn-ghost"><i data-lucide="download" class="w-4 h-4"></i>Export ข้อมูล (JSON)</button>
         <label class="btn btn-ghost cursor-pointer"><i data-lucide="upload" class="w-4 h-4"></i>Import สำรอง<input type="file" id="impBackup" accept=".json" class="hidden"></label>
@@ -3272,8 +3297,11 @@ function warnDefaultPassword(){
 }
 async function init(){
   let j = null;
-  try{ j = (await api('me')).j; }
-  catch(e){ if(e.browserCheck){ recoverFromBrowserCheck(); return; } }
+  for(let attempt = 0; attempt < 2 && !j; attempt++){
+    try{ j = (await api('me')).j; }
+    catch(e){ if(e.browserCheck){ recoverFromBrowserCheck(); return; } if(!attempt) await new Promise(r => setTimeout(r, 1500)); }
+  }
+  if(!j) setTimeout(() => toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ตอนนี้ใช้ข้อมูลในเครื่องนี้ชั่วคราว (กด F5 เพื่อลองใหม่)','error'), 800);
   if(j && j.api){
     apiMode = true;
     defaultAdminFlag = !!j.default_admin;
