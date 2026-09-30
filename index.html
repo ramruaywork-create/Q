@@ -2730,6 +2730,8 @@ async function pollLineLive(){
       DB.meta.lineOnlyTagClean = true; changed = true;
       if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+LINE_ONLY_TAG+' '+(before - DB.tasks.length)+' งาน');
     }
+    // งาน LINE ที่สร้างก่อนมีระบบต่อท้าย: ให้ batch = id ของตัวเอง จะได้รับข้อความต่อท้ายได้
+    DB.tasks.forEach(t => { if(t.source === 'line' && !t.line_batch && /^line-\d+$/.test(t.id)){ t.line_batch = t.id; changed = true; } });
     rows.forEach(r => {
       const t = r.group && r.user && DB.tasks.find(x => x.id === 'line-'+r.id && (!x.line_group || (r.quote && !x.line_quote)));
       if(t){ t.line_group = r.group; t.line_user = r.user; t.line_quote = r.quote || t.line_quote || ''; t.line_sender = r.sender; changed = true; }
@@ -2744,20 +2746,6 @@ async function pollLineLive(){
         const made = lineTasksFromRow(r);
         DB.tasks.push(...made); changed = true;
         made.filter(t => !firstRun && visibleTasks().includes(t)).forEach(t => toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info'));
-      }else if(r.type !== 'DONE' && r.message && !r.message.includes('@')){
-        // ข้อความต่อท้ายที่ไม่ได้แท็กใคร จากคนเดิม ภายใน 3 นาที → ต่อเป็นรายละเอียดของงานล่าสุด
-        const recent = recentLineTasks(r);
-        const batchTs = recent.length ? Date.parse(recent[0].created_at) : 0;
-        const tagBetween = recent.length && rows.some(x => x.group === r.group && Number(x.id) > batchTs && Number(x.id) < Number(r.id) && x.message.includes('@')
-          && !(x.user === r.user && lineSameText(x.message, recent[0].line_text))); // ส่งซ้ำข้อความเดิมไม่นับ
-        const target = recent.length && !tagBetween ? recent[recent.length - 1] : null;
-        if(target && target.status !== 'done' && !(target.line_extra_ids || []).includes(r.id)){
-          target.detail = (target.detail ? target.detail + '\n' : '') + r.message;
-          target.line_extra_ids = [...(target.line_extra_ids || []), r.id];
-          const extraAt = new Date(Number(r.id)).toISOString();
-          if(String(target.updated_at || '') < extraAt) target.updated_at = extraAt;
-          changed = true;
-        }
       }else if(r.type === 'DONE'){
         let best = null, score = 0;
         DB.tasks.filter(t => t.status !== 'done').forEach(t => {
@@ -2766,6 +2754,24 @@ async function pollLineLive(){
           if(sc > score){ score = sc; best = t; }
         });
         if(best && score >= 0.45){ setTaskStatus(best, 'done'); changed = true; if(!firstRun) toast('เสร็จแล้ว (จาก LINE): '+best.title); }
+      }
+    }
+    /* ข้อความต่อท้ายที่ไม่ได้แท็กใคร จากคนเดิม ภายใน 3 นาที → ต่อเป็นรายละเอียดของงานล่าสุด
+       ดูทุกแถว (ไม่ใช่แค่แถวใหม่) เพราะเบราว์เซอร์ที่ยังเปิดหน้าเก่าอาจอ่านแถวไปก่อน — แต่ละข้อความต่อได้ครั้งเดียว (line_extra_ids) */
+    for(const r of rows){
+      if(r.type === 'DONE' || !r.message || r.message.includes('@')) continue;
+      const recent = recentLineTasks(r);
+      if(!recent.length) continue;
+      const batchTs = Date.parse(recent[0].created_at);
+      const tagBetween = rows.some(x => x.group === r.group && Number(x.id) > batchTs && Number(x.id) < Number(r.id) && x.message.includes('@')
+        && !(x.user === r.user && lineSameText(x.message, recent[0].line_text))); // ส่งซ้ำข้อความเดิมไม่นับ
+      const target = tagBetween ? null : recent[recent.length - 1];
+      if(target && target.status !== 'done' && !(target.line_extra_ids || []).includes(r.id)){
+        target.detail = (target.detail ? target.detail + '\n' : '') + r.message;
+        target.line_extra_ids = [...(target.line_extra_ids || []), r.id];
+        const extraAt = new Date(Number(r.id)).toISOString();
+        if(String(target.updated_at || '') < extraAt) target.updated_at = extraAt;
+        changed = true;
       }
     }
     if(rows.length){ const maxTs = Math.max(last, ...rows.map(r => Number(r.id) || 0)); if(maxTs !== last){ DB.meta.lineLastTs = maxTs; changed = true; } }
