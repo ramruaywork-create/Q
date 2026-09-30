@@ -14,7 +14,7 @@ type Obj = Record<string, any>;
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3 });
 
-const COLLECTIONS = ["users", "shops", "products", "worklogs", "tiktoks", "history", "tiktok_jobs", "sales", "import_audits", "tasks"];
+const COLLECTIONS = ["users", "shops", "products", "worklogs", "tiktoks", "history", "tiktok_jobs", "sales", "import_audits", "tasks", "campaigns"];
 const LIMITS: Record<string, number> = { history: 3000, import_audits: 1000 };
 const SESSION_DAYS = 30;
 const DEFAULT_SHOPS = [
@@ -53,7 +53,7 @@ function seedDb(): Obj {
     { id: "u4", name: "C", username: "userC", pass: userPass, role: "User", active: true, shop_ids: ["s17", "s18", "s1", "s9", "s15"], created_at: now },
   ];
   const products = PRODUCTS.map(([sku, brand, name], i) => ({ id: "p" + (i + 1), sku, name, brand, created_at: now, active: true }));
-  return { users, shops, products, worklogs: [], tiktoks: [], history: [], tiktok_jobs: [], sales: [], import_audits: [], tasks: [], meta: {} };
+  return { users, shops, products, worklogs: [], tiktoks: [], history: [], tiktok_jobs: [], sales: [], import_audits: [], tasks: [], campaigns: [], meta: {} };
 }
 
 function normalizeUserShopIds(db: Obj) {

@@ -244,7 +244,7 @@ function recoverFromBrowserCheck(){
   log.push(now); try{ sessionStorage.setItem(k, JSON.stringify(log)); sessionStorage.setItem('sku_return_view', currentView || 'dashboard'); }catch(e){}
   location.reload();
 }
-const SYNC_COLLS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks'];
+const SYNC_COLLS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns'];
 let syncSnapshot = null, pushTimer = null, pushing = null, pendingOps = null, retryTimer = null;
 function takeSnapshot(db){
   const snap = {};
@@ -472,14 +472,14 @@ function seedDB(){
     {id:'tkj1', shop:'PROSPERSPORT', url:'https://www.tiktok.com/@demo/video/7000000000000000000', status:'pending', created_by:'u2', created_at:nowISO(), preview_url:'', demo:true},
     {id:'tkj2', shop:'SP', url:'https://www.tiktok.com/@demo/video/7000000000000000001', status:'pending', created_by:'u3', created_at:nowISO(), preview_url:'', demo:true}
   ];
-  return {users, shops, products, worklogs, tiktoks, history, tiktok_jobs, sales:[], tasks:[], seeded:true};
+  return {users, shops, products, worklogs, tiktoks, history, tiktok_jobs, sales:[], tasks:[], campaigns:[], seeded:true};
 }
 
 /* ---------- DB layer ---------- */
 let DB = null;
 function migrateDB(db){
   db.meta = (db.meta && typeof db.meta==='object' && !Array.isArray(db.meta)) ? db.meta : {};
-  ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks'].forEach(c => { if(!Array.isArray(db[c])) db[c] = []; });
+  ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns'].forEach(c => { if(!Array.isArray(db[c])) db[c] = []; });
   db.sales.forEach(r => { if(!r.id) r.id = uid(); });
   db.history.forEach(h => { if(!h.id) h.id = uid(); });
   if(db.history.length > 3000) db.history.length = 3000;
@@ -494,7 +494,7 @@ function loadDB(){
   saveDB();
 }
 function renderCurrentView(){
-  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
+  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
 }
@@ -754,6 +754,7 @@ const NAV = [
   {id:'skulist',   label:'รายการ SKU',   icon:'list',          admin:false},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
   {id:'tasks',     label:'ติดตามงาน',    icon:'list-todo',     admin:false},
+  {id:'campaigns', label:'วิดีโอแคมเปญ', icon:'clapperboard',  admin:false},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',admin:false},
   {id:'users',     label:'จัดการ User',  icon:'users',         admin:true},
   {id:'shops',     label:'จัดการร้าน',   icon:'store',         admin:true},
@@ -773,7 +774,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', campaigns:'วิดีโอแคมเปญ', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -2546,6 +2547,126 @@ function renderShops(){
   </div>`;
   if(window.lucide) lucide.createIcons();
 }
+
+/* ---------- วิดีโอแคมเปญ: เดือนนี้ร้านไหนต้องลงวิดีโอกี่ตัว + แปะลิงก์ที่ทำแล้ว ----------
+   campaigns: {kind:'target', id:'vc-<เดือน>-<ร้าน>', month, shop_id, target, note}
+              {kind:'video',  id, month, shop_id, url, user_id, created_at}  (แยกเป็นแถว → หลายคนแปะพร้อมกันไม่ทับกัน) */
+const campState = {month: ''};
+const monthNow = () => todayISO().slice(0, 7);
+function shiftMonth(m, d){ const [y, mo] = m.split('-').map(Number); const t = new Date(y, mo - 1 + d, 1); return t.getFullYear() + '-' + pad2(t.getMonth() + 1); }
+function fmtMonthTH(m){ const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('th-TH', {month: 'long', year: 'numeric'}); }
+function renderCampaigns(){
+  if(!campState.month) campState.month = monthNow();
+  const m = campState.month;
+  const mine = new Set(getAssignedShopIds(currentUser));
+  const targets = DB.campaigns.filter(c => c.kind === 'target' && c.month === m && (isAdmin() || mine.has(c.shop_id)))
+    .map(c => ({c, shop: DB.shops.find(x => x.id === c.shop_id)})).filter(x => x.shop)
+    .sort((a, b) => PLATFORMS.indexOf(a.shop.platform) - PLATFORMS.indexOf(b.shop.platform) || String(a.shop.code).localeCompare(String(b.shop.code)));
+  const videosOf = sid => DB.campaigns.filter(c => c.kind === 'video' && c.month === m && c.shop_id === sid).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const totT = targets.reduce((a, x) => a + (Number(x.c.target) || 0), 0);
+  const totD = targets.reduce((a, x) => a + Math.min(videosOf(x.shop.id).length, Number(x.c.target) || 0), 0);
+  const pct = totT ? Math.round(totD / totT * 100) : 0;
+  const freeShops = DB.shops.filter(sh => sh.active !== false && !targets.some(x => x.shop.id === sh.id));
+  $('#view').innerHTML = `
+  <div class="fade-in space-y-4">
+    <div class="card p-4 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-1">
+        <button class="btn btn-ghost btn-sm" data-camp-month="${shiftMonth(m, -1)}" title="เดือนก่อน"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+        <input type="month" id="campMonth" class="input !w-44 text-center font-semibold" value="${m}">
+        <button class="btn btn-ghost btn-sm" data-camp-month="${shiftMonth(m, 1)}" title="เดือนถัดไป"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+      </div>
+      <p class="font-bold text-lg">${esc(fmtMonthTH(m))}</p>
+      <div class="flex-1 min-w-[200px]">
+        <div class="flex justify-between text-xs text-slate-500 mb-1"><span>ลงแล้ว <b class="text-slate-700 badge-num">${totD}</b> / ${totT} วิดีโอ · ${targets.length} ร้าน</span><b class="badge-num">${pct}%</b></div>
+        <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>
+      </div>
+    </div>
+    ${isAdmin() ? `<div class="card p-4">
+      <p class="font-semibold text-sm mb-2 flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>เพิ่มร้านที่ต้องลงวิดีโอเดือนนี้</p>
+      <div class="grid grid-cols-1 md:grid-cols-[1fr_8rem_1fr_auto] gap-2">
+        <select id="campShop" class="input">${PLATFORMS.map(pl => `<optgroup label="${pl}">${freeShops.filter(sh => sh.platform === pl).map(sh => `<option value="${sh.id}">${esc(sh.code)}</option>`).join('')}</optgroup>`).join('')}</select>
+        <input id="campTarget" type="number" min="1" class="input" placeholder="จำนวน" value="4">
+        <input id="campNote" class="input" placeholder="หมายเหตุ เช่น แคมเปญ 10.10 (ไม่บังคับ)">
+        <button class="btn btn-primary" data-camp-add><i data-lucide="plus" class="w-4 h-4"></i>เพิ่ม</button>
+      </div>
+      ${DB.campaigns.some(c => c.kind === 'target' && c.month === shiftMonth(m, -1)) && !targets.length ? `<button class="btn btn-ghost btn-sm mt-2" data-camp-copy><i data-lucide="copy" class="w-3.5 h-3.5"></i>คัดลอกร้าน + จำนวนจากเดือนก่อน</button>` : ''}
+    </div>` : ''}
+    ${targets.length ? `<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${targets.map(({c, shop}) => {
+      const vids = videosOf(shop.id), target = Number(c.target) || 0, done = vids.length, full = done >= target;
+      return `<div class="card p-4 space-y-3" style="border-left:4px solid ${full ? '#16a34a' : done ? '#d97706' : '#94a3b8'}">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="font-bold">${esc(shop.platform)} · <span class="text-brand-700">${esc(shop.code)}</span></p>
+            ${c.note ? `<p class="text-xs text-slate-500">${esc(c.note)}</p>` : ''}
+          </div>
+          <div class="text-right">
+            <p class="text-2xl font-bold badge-num ${full ? 'text-green-600' : 'text-slate-700'}">${done}<span class="text-sm text-slate-400">/${target}</span></p>
+            ${isAdmin() ? `<div class="flex gap-1 justify-end"><button class="text-xs text-slate-400 hover:text-brand-600" data-camp-edit="${c.id}">แก้จำนวน</button><span class="text-slate-300">·</span><button class="text-xs text-slate-400 hover:text-red-600" data-camp-del="${c.id}">เอาออก</button></div>` : ''}
+          </div>
+        </div>
+        <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full ${full ? 'bg-green-500' : 'bg-amber-400'}" style="width:${target ? Math.min(100, Math.round(done / target * 100)) : 0}%"></div></div>
+        ${vids.length ? `<ol class="space-y-1 text-sm">${vids.map((v, i) => `<li class="flex items-center gap-2 min-w-0">
+          <span class="text-xs text-slate-400 w-5 text-right">${i + 1}.</span>
+          <a href="${esc(v.url)}" target="_blank" rel="noopener" class="text-brand-700 hover:underline truncate flex-1 min-w-0">${esc(v.url)}</a>
+          <span class="text-[11px] text-slate-400 whitespace-nowrap">${esc(userById(v.user_id)?.name || '-')} · ${esc(fmtDate(localDate(v.created_at)))}</span>
+          ${(isAdmin() || v.user_id === currentUser.id) ? `<button class="text-slate-300 hover:text-red-500" data-camp-vdel="${v.id}" title="ลบลิงก์"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>` : ''}
+        </li>`).join('')}</ol>` : '<p class="text-xs text-slate-400">ยังไม่มีวิดีโอ</p>'}
+        <div class="flex gap-2">
+          <input class="input text-sm" data-camp-url="${shop.id}" placeholder="แปะลิงก์วิดีโอที่ลงแล้ว (https://...)">
+          <button class="btn btn-soft btn-sm whitespace-nowrap" data-camp-link="${shop.id}"><i data-lucide="link" class="w-3.5 h-3.5"></i>ทำแล้ว</button>
+        </div>
+      </div>`;
+    }).join('')}</div>` : `<div class="card p-10 text-center text-slate-400">${isAdmin() ? 'ยังไม่มีร้านในแคมเปญเดือนนี้ — เพิ่มร้านด้านบน' : 'เดือนนี้ร้านของคุณยังไม่มีวิดีโอที่ต้องลง'}</div>`}
+  </div>`;
+  if(window.lucide) lucide.createIcons();
+}
+function addCampaignLink(shopId){
+  const inp = document.querySelector(`[data-camp-url="${shopId}"]`); if(!inp) return;
+  const url = inp.value.trim();
+  if(!/^https?:\/\/\S+$/i.test(url)){ toast('ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://', 'error'); inp.focus(); return; }
+  if(DB.campaigns.some(c => c.kind === 'video' && c.month === campState.month && c.shop_id === shopId && c.url === url)){ toast('ลิงก์นี้แปะไว้แล้ว', 'info'); return; }
+  DB.campaigns.push({id: uid(), kind: 'video', month: campState.month, shop_id: shopId, url, user_id: currentUser.id, created_at: nowISO(), updated_at: nowISO()});
+  logHistory('campaign_video', (DB.shops.find(x => x.id === shopId)?.code || '') + ' ' + campState.month + ' → ' + url);
+  saveDB(); toast('บันทึกวิดีโอแล้ว'); renderCampaigns();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-camp-month],[data-camp-add],[data-camp-copy],[data-camp-edit],[data-camp-del],[data-camp-link],[data-camp-vdel]');
+  if(!t) return;
+  if(t.dataset.campMonth){ campState.month = t.dataset.campMonth; renderCampaigns(); return; }
+  if(t.dataset.campLink){ addCampaignLink(t.dataset.campLink); return; }
+  if(t.dataset.campVdel){
+    const v = DB.campaigns.find(c => c.id === t.dataset.campVdel);
+    if(v && (isAdmin() || v.user_id === currentUser.id) && confirm('ลบลิงก์นี้?')){ DB.campaigns = DB.campaigns.filter(c => c !== v); saveDB(); renderCampaigns(); }
+    return;
+  }
+  if(!isAdmin()) return;
+  if(t.hasAttribute('data-camp-add')){
+    const sid = $('#campShop').value, target = parseInt($('#campTarget').value, 10), note = $('#campNote').value.trim();
+    if(!sid){ toast('ไม่มีร้านให้เพิ่มแล้ว', 'info'); return; }
+    if(!(target > 0)){ toast('ใส่จำนวนวิดีโอ (มากกว่า 0)', 'error'); return; }
+    DB.campaigns.push({id: 'vc-' + campState.month + '-' + sid, kind: 'target', month: campState.month, shop_id: sid, target, note, created_by: currentUser.id, updated_at: nowISO()});
+    logHistory('campaign_target', (DB.shops.find(x => x.id === sid)?.code || '') + ' ' + campState.month + ' = ' + target + ' วิดีโอ');
+    saveDB(); renderCampaigns(); return;
+  }
+  if(t.hasAttribute('data-camp-copy')){
+    const prev = DB.campaigns.filter(c => c.kind === 'target' && c.month === shiftMonth(campState.month, -1));
+    prev.forEach(c => { if(!DB.campaigns.some(x => x.id === 'vc-' + campState.month + '-' + c.shop_id)) DB.campaigns.push({...c, id: 'vc-' + campState.month + '-' + c.shop_id, month: campState.month, created_by: currentUser.id, updated_at: nowISO()}); });
+    saveDB(); toast('คัดลอก ' + prev.length + ' ร้านจากเดือนก่อน'); renderCampaigns(); return;
+  }
+  if(t.dataset.campEdit){
+    const c = DB.campaigns.find(x => x.id === t.dataset.campEdit); if(!c) return;
+    const n = prompt('จำนวนวิดีโอที่ต้องลง', c.target); if(n === null) return;
+    const v = parseInt(n, 10); if(!(v > 0)){ toast('จำนวนต้องมากกว่า 0', 'error'); return; }
+    c.target = v; c.updated_at = nowISO(); saveDB(); renderCampaigns(); return;
+  }
+  if(t.dataset.campDel){
+    const c = DB.campaigns.find(x => x.id === t.dataset.campDel); if(!c) return;
+    if(!confirm('เอาร้านนี้ออกจากแคมเปญเดือนนี้? (ลิงก์ที่แปะไว้ยังเก็บอยู่)')) return;
+    DB.campaigns = DB.campaigns.filter(x => x !== c); saveDB(); renderCampaigns();
+  }
+});
+document.addEventListener('change', e => { if(e.target.id === 'campMonth' && /^\d{4}-\d{2}$/.test(e.target.value)){ campState.month = e.target.value; renderCampaigns(); } });
+document.addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.dataset && e.target.dataset.campUrl){ e.preventDefault(); addCampaignLink(e.target.dataset.campUrl); } });
 
 /* ---------- Task tracker (ติดตามงาน) ---------- */
 const TASK_STATUS = {todo:'รอทำ', doing:'กำลังทำ', done:'เสร็จแล้ว'};
