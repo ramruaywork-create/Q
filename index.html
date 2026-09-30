@@ -2660,23 +2660,52 @@ function lineDue(v){
   const m = String(v).match(/^Date\((\d+),(\d+),(\d+)/); // Google Sheet ส่งวันที่มาเป็น Date(y,m0,d)
   return m ? m[1]+'-'+pad2(+m[2]+1)+'-'+pad2(+m[3]) : '';
 }
-function lineTaskFromRow(r){
+const LINE_FOLLOW_MS = 3 * 60 * 1000; // ข้อความต่อท้าย / ส่งซ้ำ ภายใน 3 นาที นับเป็นงานเดิม
+const SHOP_TAG_RE = /(^|\s)\/([^\/\s]+)\/(?=\s|$)/;
+const lineSameText = (a, b) => String(a || '').replace(/\s+/g, ' ').trim().toLowerCase() === String(b || '').replace(/\s+/g, ' ').trim().toLowerCase();
+/* ข้อความที่แท็ก Sofia → งาน 1 งานขึ้นไป
+   - บรรทัดแรกเป็นชื่องาน บรรทัดถัดไปเป็นรายละเอียด
+   - ถ้ามีหลายบรรทัดที่ขึ้นต้นด้วย /ร้าน/ → แยกเป็นงานละบรรทัด (บรรทัดที่ไม่มีร้านต่อท้ายงานก่อนหน้า)
+   ทุกงานเก็บ quoteToken ของข้อความเดียวกัน → ตอนเสร็จบอท Reply ข้อความ @ นั้น */
+function lineTasksFromRow(r){
   const person = LINE_ONLY_TAG;
   let text = r.message;
   const at = text.toLowerCase().indexOf('@' + person.toLowerCase());
   if(at >= 0) text = text.slice(0, at) + ' ' + text.slice(at + person.length + 1);
-  let shopCode = '';
-  text = text.replace(/(^|\s)\/([^\/\s]+)\/(?=\s|$)/, (m0, sp, code) => { shopCode = code; return ' '; });
-  text = text.replace(/\s+/g, ' ').trim();
-  const user = person ? DB.users.find(u => String(u.name).trim().toLowerCase() === person.toLowerCase()) : null;
-  const shop = shopCode ? DB.shops.find(x => String(x.code).toUpperCase() === shopCode.toUpperCase()) : null;
+  const lines = text.split(/\r?\n/).map(l => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+  const parts = []; // [{shopCode, lines:[]}]
+  const shopLines = lines.filter(l => SHOP_TAG_RE.test(l)).length;
+  lines.forEach(l => {
+    let code = '';
+    const rest = l.replace(SHOP_TAG_RE, (m0, sp, c) => { code = c; return ' '; }).replace(/\s+/g, ' ').trim();
+    if(code && (shopLines > 1 || !parts.length)) parts.push({shopCode: code, lines: rest ? [rest] : []});
+    else if(!parts.length) parts.push({shopCode: code, lines: rest ? [rest] : []});
+    else { if(code && !parts[parts.length - 1].shopCode) parts[parts.length - 1].shopCode = code; if(rest) parts[parts.length - 1].lines.push(rest); }
+  });
+  if(!parts.length) parts.push({shopCode: '', lines: []});
+  const user = DB.users.find(u => String(u.name).trim().toLowerCase() === person.toLowerCase());
   const created = Number(r.id) ? new Date(Number(r.id)).toISOString() : nowISO();
-  const t = {id:'line-'+r.id, title:(text || r.title || r.message).slice(0, 200), detail:(r.sender ? r.sender+': ' : '')+r.message,
-    assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : shopCode,
-    due: lineDue(r.due), priority:2, source:'line', line_text:r.message, line_group:r.group, line_user:r.user, line_quote:r.quote, line_sender:r.sender, created_at:created, created_by:'line'};
-  setTaskStatus(t, 'todo');
-  t.updated_at = created;
-  return t;
+  return parts.map((part, i) => {
+    const shop = part.shopCode ? DB.shops.find(x => String(x.code).toUpperCase() === part.shopCode.toUpperCase()) : null;
+    const first = part.lines[0];
+    const t = {id: 'line-' + r.id + (i ? '-' + (i + 1) : ''), title: (first || r.title || r.message).slice(0, 200),
+      detail: (r.sender ? r.sender + ': ' : '') + r.message,
+      assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : part.shopCode,
+      due: lineDue(r.due), priority: 2, source: 'line', line_text: r.message, line_batch: 'line-' + r.id,
+      line_group: r.group, line_user: r.user, line_quote: r.quote, line_sender: r.sender, created_at: created, created_by: 'line'};
+    setTaskStatus(t, 'todo');
+    t.updated_at = created;
+    return t;
+  });
+}
+/* งานล่าสุดของคนเดิมในกลุ่มเดิม ภายใน 3 นาทีก่อน ts (ใช้ทั้งกันส่งซ้ำ และต่อข้อความท้าย) */
+function recentLineTasks(r){
+  const ts = Number(r.id);
+  const own = DB.tasks.filter(t => t.source === 'line' && t.line_group === r.group && t.line_user === r.user && t.line_batch)
+    .filter(t => { const c = Date.parse(t.created_at); return c <= ts && ts - c <= LINE_FOLLOW_MS; });
+  if(!own.length) return [];
+  const batch = own.reduce((a, b) => Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a).line_batch;
+  return DB.tasks.filter(t => t.line_batch === batch);
 }
 function setLineLive(ok, msg){
   lineLive.ok = ok; lineLive.msg = msg;
@@ -2708,11 +2737,27 @@ async function pollLineLive(){
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
-      if(r.type === 'TASK' && lineTagsTarget(r.message)){
+      if(r.type !== 'DONE' && lineTagsTarget(r.message)){
         if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
-        const t = lineTaskFromRow(r);
-        DB.tasks.push(t); changed = true;
-        if(!firstRun && visibleTasks().includes(t)) toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info');
+        const recent = recentLineTasks(r);
+        if(recent.length && lineSameText(recent[0].line_text, r.message)) continue; // ส่งข้อความเดิมซ้ำ → งานเดิม
+        const made = lineTasksFromRow(r);
+        DB.tasks.push(...made); changed = true;
+        made.filter(t => !firstRun && visibleTasks().includes(t)).forEach(t => toast('งานใหม่จาก LINE: '+t.title+(isAdmin() && !t.assignee_id ? ' — รอมอบหมาย' : ''), 'info'));
+      }else if(r.type !== 'DONE' && r.message && !r.message.includes('@')){
+        // ข้อความต่อท้ายที่ไม่ได้แท็กใคร จากคนเดิม ภายใน 3 นาที → ต่อเป็นรายละเอียดของงานล่าสุด
+        const recent = recentLineTasks(r);
+        const batchTs = recent.length ? Date.parse(recent[0].created_at) : 0;
+        const tagBetween = recent.length && rows.some(x => x.group === r.group && Number(x.id) > batchTs && Number(x.id) < Number(r.id) && x.message.includes('@')
+          && !(x.user === r.user && lineSameText(x.message, recent[0].line_text))); // ส่งซ้ำข้อความเดิมไม่นับ
+        const target = recent.length && !tagBetween ? recent[recent.length - 1] : null;
+        if(target && target.status !== 'done' && !(target.line_extra_ids || []).includes(r.id)){
+          target.detail = (target.detail ? target.detail + '\n' : '') + r.message;
+          target.line_extra_ids = [...(target.line_extra_ids || []), r.id];
+          const extraAt = new Date(Number(r.id)).toISOString();
+          if(String(target.updated_at || '') < extraAt) target.updated_at = extraAt;
+          changed = true;
+        }
       }else if(r.type === 'DONE'){
         let best = null, score = 0;
         DB.tasks.filter(t => t.status !== 'done').forEach(t => {
