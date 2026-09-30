@@ -163,6 +163,30 @@ tailwind.config = {
 <script>
 (function(){
 'use strict';
+/* ---------- อัปเดตตัวเอง: มีเวอร์ชันใหม่ขึ้นเว็บ → โหลดหน้าใหม่ให้ ไม่ต้องกด Ctrl+F5 ---------- */
+const APP_SCRIPT = ((document.currentScript && document.currentScript.textContent) || '').replace(/\r/g, '');
+function startVersionWatch(){
+  if(!/^https?:$/.test(location.protocol) || !APP_SCRIPT) return;
+  const check = async () => {
+    if(document.hidden) return;
+    try{
+      const res = await fetch(location.pathname + '?v=' + Date.now(), {cache:'no-store'});
+      if(!res.ok) return;
+      const html = (await res.text()).replace(/\r/g, '');
+      if(!html.includes('startVersionWatch') || html.includes(APP_SCRIPT)) return; // ยังเป็นเวอร์ชันเดิม
+      const sig = html.length + ':' + html.slice(-2000);
+      let tried = null; try{ tried = sessionStorage.getItem('sku_reloaded_for'); }catch(e){}
+      if(tried === sig) return; // โหลดใหม่ไปแล้วแต่ได้หน้าเดิม (แคช) — ไม่วนโหลดซ้ำ
+      if(currentUser && isUserBusy()) return; // กำลังพิมพ์/เปิดหน้าต่างอยู่ — รอรอบถัดไป
+      if(apiMode) await flushPush();
+      try{ sessionStorage.setItem('sku_reloaded_for', sig); sessionStorage.setItem('sku_return_view', currentView || 'dashboard'); }catch(e){}
+      toast('มีเวอร์ชันใหม่ — กำลังโหลดหน้าใหม่...', 'info');
+      setTimeout(() => location.reload(), 1500);
+    }catch(e){}
+  };
+  setInterval(check, 60000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) check(); });
+}
 /* ============================================================
    SKU WORK TRACKER — client-side SPA (localStorage persistence)
    ============================================================ */
@@ -3381,6 +3405,7 @@ async function init(){
   }
   if(window.lucide) lucide.createIcons();
   setInterval(() => { if(!document.hidden) refreshRuntimeState(); }, apiMode ? 45000 : 60000);
+  startVersionWatch();
   document.addEventListener('visibilitychange', () => { if(!document.hidden) refreshRuntimeState(); });
   window.addEventListener('focus', () => refreshRuntimeState());
   if(!apiMode) window.addEventListener('storage', e => { if(e.key===LS_KEY) refreshRuntimeState(); });
