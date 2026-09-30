@@ -2623,7 +2623,9 @@ function renderCampaigns(){
         <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full ${full ? 'bg-green-500' : 'bg-amber-400'}" style="width:${target ? Math.round(done / target * 100) : 0}%"></div></div>
         ${c.done_at
           ? `<div class="flex items-center justify-between gap-2"><span class="pill pill-done"><i data-lucide="check" class="w-3.5 h-3.5"></i>ทำแล้ว · ${esc(userById(c.done_by)?.name || '-')}</span>${isAdmin() || c.done_by === currentUser.id ? `<button class="text-xs text-slate-400 hover:text-red-600" data-camp-undo="${c.id}">ยกเลิก</button>` : ''}</div>`
-          : `<button class="btn btn-primary btn-sm w-full" data-camp-done="${c.id}"><i data-lucide="check" class="w-4 h-4"></i>ทำแล้ว</button>`}
+          : c.month < monthNow() // เลยเดือนของแคมเปญแล้ว → กดไม่ได้
+            ? `<button class="btn btn-sm w-full cursor-not-allowed" style="background:#e2e8f0;color:#64748b" disabled title="เลยกำหนด (สิ้นเดือน ${esc(fmtMonthTH(c.month))}) แล้ว"><i data-lucide="x" class="w-4 h-4"></i>ไม่ได้ทำ</button>`
+            : `<button class="btn btn-primary btn-sm w-full" data-camp-done="${c.id}"><i data-lucide="check" class="w-4 h-4"></i>ทำแล้ว</button>`}
         ${notice ? `<p class="text-[11px] text-slate-400 flex items-center gap-1"><i data-lucide="message-circle" class="w-3 h-3" style="color:#06c755"></i>${esc(notice)}</p>` : ''}
       </div>`;
     }).join('')}</div>`
@@ -2707,6 +2709,7 @@ document.addEventListener('click', e => {
   const c = DB.campaigns.find(x => x.id === (t.dataset.campEdit || t.dataset.campDel || t.dataset.campDone || t.dataset.campUndo)); if(!c) return;
   const shop = DB.shops.find(x => x.id === c.shop_id);
   if(t.dataset.campDone){
+    if(c.month < monthNow()){ toast('เลยกำหนดแล้ว — กดทำแล้วไม่ได้', 'error'); return; }
     if(!confirm('ร้าน ' + (shop ? shop.code : '') + ' ลงวิดีโอครบ ' + c.target + ' ตัวแล้ว?' + (c.line_group ? '\nพรุ่งนี้ 09:00 น. บอทจะ Reply ในกลุ่ม LINE ว่าเช็คหน่อย' : ''))) return;
     Object.assign(c, {done: Number(c.target) || 0, done_at: nowISO(), done_by: currentUser.id, notify_at: c.line_group ? nextNineAmBangkok() : null, notified_at: null, updated_at: nowISO()});
     logHistory('campaign_done', (shop ? shop.code : '') + ' ' + c.month + ' ครบ ' + c.target);
