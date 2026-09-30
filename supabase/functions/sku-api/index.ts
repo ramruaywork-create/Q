@@ -138,6 +138,40 @@ Deno.serve(async (req) => {
       return respond({ ok: true });
     }
 
+    /* ตัวตั้งเวลา (pg_cron 09:00 น.) เรียกทุกเช้า: แคมเปญวิดีโอที่กด "ทำแล้ว" และถึงเวลาแจ้ง → บอท Reply ข้อความ /VDO/ ว่า "เช็คหน่อย" */
+    if (action === "cron_notify") {
+      const key = req.headers.get("x-cron-key") || "";
+      const rows = await sql`select value from cron_config where key = 'cron'`;
+      if (!key || !rows[0] || key !== rows[0].value) return respond({ ok: false }, 401);
+      const lineToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
+      if (!lineToken) return respond({ ok: false, error: "no LINE token" });
+      const now = nowIso();
+      const due = await withDb((db) => {
+        const list: Obj[] = [];
+        for (const c of db.campaigns) {
+          if (c.kind !== "target" || !c.done_at || !c.notify_at || c.notified_at || c.notify_at > now || !c.line_group || !c.line_user) continue;
+          c.notified_at = now; c.updated_at = now; // จองก่อนส่ง กันส่งซ้ำ
+          const shop = db.shops.find((s: Obj) => s.id === c.shop_id) || {};
+          list.push({ id: c.id, group: c.line_group, user: c.line_user, quote: c.line_quote || "", text: `{requester} ${shop.platform || ""} ${shop.code || ""} ลงวิดีโอครบ ${c.target} ตัวแล้ว เช็คหน่อย` });
+        }
+        return list;
+      }, true);
+      let sent = 0;
+      for (const d of due) {
+        const r = await fetch("https://api.line.me/v2/bot/message/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + lineToken },
+          body: JSON.stringify({ to: d.group, messages: [{ type: "textV2", text: d.text,
+            substitution: { requester: { type: "mention", mentionee: { type: "user", userId: d.user } } },
+            ...(d.quote ? { quoteToken: d.quote } : {}) }] }),
+        });
+        if (r.ok) { sent++; continue; }
+        console.error("LINE push failed", r.status, await r.text());
+        await withDb((db) => { const c = db.campaigns.find((x: Obj) => x.id === d.id); if (c) { delete c.notified_at; c.updated_at = nowIso(); } }, true);
+      }
+      return respond({ ok: true, due: due.length, sent });
+    }
+
     const uid = await sessionUserId(req);
     if (!uid) return respond({ ok: false, error: "unauthorized" }, 401);
 
@@ -191,7 +225,7 @@ Deno.serve(async (req) => {
               }
             }
             // งาน: ถ้าในเซิร์ฟเวอร์ใหม่กว่า (เช่น Admin มอบหมายไปแล้ว) ไม่ให้สำเนาเก่าจากอีกเครื่องทับ
-            if (coll === "tasks" && i >= 0 && String(list[i].updated_at ?? "") > String(item.updated_at ?? "")) continue;
+            if ((coll === "tasks" || coll === "campaigns") && i >= 0 && String(list[i].updated_at ?? "") > String(item.updated_at ?? "")) continue;
             if (i >= 0) list[i] = item; else list.push(item);
           }
           const lim = LIMITS[coll];

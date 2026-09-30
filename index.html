@@ -2578,10 +2578,17 @@ function campaignTargets(m){
     .map(c => ({c, shop: DB.shops.find(x => x.id === c.shop_id)})).filter(x => x.shop)
     .sort((a, b) => PLATFORMS.indexOf(a.shop.platform) - PLATFORMS.indexOf(b.shop.platform) || String(a.shop.code).localeCompare(String(b.shop.code)));
 }
+/* 09:00 น. (เวลาไทย) ของวันถัดไป — เวลาที่บอทจะ Reply "เช็คหน่อย" หลังกดทำแล้ว */
+function nextNineAmBangkok(){
+  const bkk = new Date(Date.now() + 7 * 3600e3);
+  return new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate() + 1, 2, 0, 0)).toISOString();
+}
 function renderCampaigns(){
   if(!campState.month) campState.month = monthNow();
   const m = campState.month, targets = campaignTargets(m);
   const total = targets.reduce((a, x) => a + (Number(x.c.target) || 0), 0);
+  const doneAll = targets.reduce((a, x) => a + Math.min(Number(x.c.done) || 0, Number(x.c.target) || 0), 0);
+  const pct = total ? Math.round(doneAll / total * 100) : 0;
   try{ localStorage.setItem(campSeenKey(), nowISO()); }catch(e){} // เปิดดูแล้ว → เลิกแจ้งเตือนสีแดง
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
@@ -2592,72 +2599,119 @@ function renderCampaigns(){
         <button class="btn btn-ghost btn-sm" data-camp-month="${shiftMonth(m, 1)}" title="เดือนถัดไป"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
       </div>
       <p class="font-bold text-lg">${esc(fmtMonthTH(m))}</p>
-      <p class="text-sm text-slate-500 ml-auto">รวม <b class="text-slate-700 badge-num">${total}</b> วิดีโอ · ${targets.length} ร้าน</p>
+      <div class="flex-1 min-w-[200px]">
+        <div class="flex justify-between text-xs text-slate-500 mb-1"><span>ลงแล้ว <b class="text-slate-700 badge-num">${doneAll}</b> / ${total} วิดีโอ · ${targets.length} ร้าน</span><b class="badge-num">${pct}%</b></div>
+        <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>
+      </div>
     </div>
-    ${targets.length ? `<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">${targets.map(({c, shop}) => `
-      <div class="card p-4 flex items-center gap-4">
-        <div class="flex-1 min-w-0">
-          <p class="font-bold">${esc(shop.platform)} · <span class="text-brand-700">${esc(shop.code)}</span></p>
-          ${c.note ? `<p class="text-xs text-slate-500 truncate" title="${esc(c.note)}">${esc(c.note)}</p>` : ''}
-          ${isAdmin() ? `<div class="flex gap-2 mt-1"><button class="text-xs text-slate-400 hover:text-brand-600" data-camp-edit="${c.id}">แก้จำนวน</button><button class="text-xs text-slate-400 hover:text-red-600" data-camp-del="${c.id}">เอาออก</button></div>` : ''}
+    ${targets.length ? `<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">${targets.map(({c, shop}) => {
+      const target = Number(c.target) || 0, done = Math.min(Number(c.done) || 0, target), full = !!c.done_at || (target && done >= target);
+      const notice = c.notified_at ? 'Reply "เช็คหน่อย" ในกลุ่มแล้ว ' + localDateTime(c.notified_at)
+                   : c.notify_at ? 'บอทจะ Reply "เช็คหน่อย" ' + localDateTime(c.notify_at) : '';
+      return `<div class="card p-4 space-y-3" style="border-left:4px solid ${full ? '#16a34a' : done ? '#d97706' : '#94a3b8'}">
+        <div class="flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <p class="font-bold">${esc(shop.platform)} · <span class="text-brand-700">${esc(shop.code)}</span></p>
+            ${c.note ? `<p class="text-xs text-slate-500 truncate" title="${esc(c.note)}">${esc(c.note)}</p>` : ''}
+            ${isAdmin() ? `<div class="flex gap-2 mt-1"><button class="text-xs text-slate-400 hover:text-brand-600" data-camp-edit="${c.id}">แก้จำนวน</button><button class="text-xs text-slate-400 hover:text-red-600" data-camp-del="${c.id}">เอาออก</button></div>` : ''}
+          </div>
+          <div class="text-right">
+            <p class="text-3xl font-bold badge-num ${full ? 'text-green-600' : 'text-slate-800'}">${done}<span class="text-base text-slate-400">/${target}</span></p>
+            <p class="text-[11px] text-slate-400">วิดีโอ</p>
+          </div>
         </div>
-        <div class="text-right">
-          <p class="text-3xl font-bold badge-num text-slate-800">${Number(c.target) || 0}</p>
-          <p class="text-[11px] text-slate-400">วิดีโอ</p>
-        </div>
-      </div>`).join('')}</div>`
+        <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full ${full ? 'bg-green-500' : 'bg-amber-400'}" style="width:${target ? Math.round(done / target * 100) : 0}%"></div></div>
+        ${c.done_at
+          ? `<div class="flex items-center justify-between gap-2"><span class="pill pill-done"><i data-lucide="check" class="w-3.5 h-3.5"></i>ทำแล้ว · ${esc(userById(c.done_by)?.name || '-')}</span>${isAdmin() || c.done_by === currentUser.id ? `<button class="text-xs text-slate-400 hover:text-red-600" data-camp-undo="${c.id}">ยกเลิก</button>` : ''}</div>`
+          : `<button class="btn btn-primary btn-sm w-full" data-camp-done="${c.id}"><i data-lucide="check" class="w-4 h-4"></i>ทำแล้ว</button>`}
+        ${notice ? `<p class="text-[11px] text-slate-400 flex items-center gap-1"><i data-lucide="message-circle" class="w-3 h-3" style="color:#06c755"></i>${esc(notice)}</p>` : ''}
+      </div>`;
+    }).join('')}</div>`
     : `<div class="card p-10 text-center text-slate-400">ยังไม่มีแคมเปญวิดีโอเดือนนี้</div>`}
     <div class="card p-4 text-sm text-slate-500">
-      <p class="font-semibold text-slate-600 mb-1 flex items-center gap-2"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>ตั้งแคมเปญจากกลุ่ม LINE</p>
-      <p>ส่งในกลุ่มแบบนี้ (บรรทัดละร้าน) — ระบบตั้งจำนวนของเดือนที่ส่งให้เอง ส่งใหม่ = แก้จำนวนร้านนั้น</p>
-      <pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg mt-2">@Sofia Alvarez /VDO/
+      <p class="font-semibold text-slate-600 mb-2 flex items-center gap-2"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>สั่งจากกลุ่ม LINE (บรรทัดละร้าน)</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div><p class="text-xs mb-1"><b>ตั้งจำนวน</b> (ส่งใหม่ = แก้)</p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /VDO/
 alp 32
-dp 26</pre>
+dp 26</pre></div>
+        <div><p class="text-xs mb-1"><b>ลงไปแล้วกี่ตัว</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /RVDO/
+alp 6</pre></div>
+        <div><p class="text-xs mb-1"><b>ลบร้านออก</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /DVDO/
+alp</pre></div>
+      </div>
+      <p class="text-xs mt-2">กด <b>ทำแล้ว</b> → 09:00 น. วันถัดไป บอทจะ Reply ข้อความ /VDO/ ในกลุ่มว่า “ลงครบแล้ว เช็คหน่อย”</p>
     </div>
   </div>`;
   if(window.lucide) lucide.createIcons();
   renderNav();
 }
-/* ข้อความ LINE /VDO/ → ตั้งจำนวนวิดีโอของแต่ละร้านในเดือนนั้น  (คืนค่า [{code, n, shop}] ) */
-function parseCampaignLines(text){
+/* ข้อความ LINE แคมเปญ: /VDO/ ตั้งจำนวน · /RVDO/ ลงไปแล้ว · /DVDO/ ลบ  (คืนค่า [{code, n, shop}] ) */
+const CAMP_TAG_RE = /\/(R|D)?VDO\//i;
+const campKindOf = msg => { const m = String(msg || '').match(CAMP_TAG_RE); return m ? (m[1] ? m[1].toUpperCase() : 'V') : null; };
+function parseCampaignLines(text, kind){
   const out = [];
-  String(text || '').replace(/@\S+(\s+\S+)?\s*/, ' ').replace(/\/VDO\//ig, ' ').split(/\r?\n|,/).forEach(line => {
-    const m = line.trim().match(/^([A-Za-z0-9]+)\s*[:=\-]?\s*(\d+)\s*(วิดีโอ|คลิป|vdo|video)?$/i);
+  String(text || '').replace(/@\S+(\s+\S+)?\s*/, ' ').replace(new RegExp(CAMP_TAG_RE.source, 'ig'), ' ').split(/\r?\n|,/).forEach(line => {
+    const t = line.trim(); if(!t) return;
+    const m = kind === 'D' ? t.match(/^([A-Za-z0-9]+)$/) : t.match(/^([A-Za-z0-9]+)\s*[:=\-]?\s*(\d+)\s*(วิดีโอ|คลิป|vdo|video)?$/i);
     if(!m) return;
-    out.push({code: m[1], n: Number(m[2]), shop: DB.shops.find(x => String(x.code).toUpperCase() === m[1].toUpperCase()) || null});
+    out.push({code: m[1], n: kind === 'D' ? 0 : Number(m[2]), shop: DB.shops.find(x => String(x.code).toUpperCase() === m[1].toUpperCase()) || null});
   });
   return out;
 }
-function applyCampaignRow(r, text){
-  const items = parseCampaignLines(text);
+function applyCampaignRow(r, text, kind){
+  kind = kind || campKindOf(text) || 'V';
+  const items = parseCampaignLines(text, kind);
   if(!items.length) return null;
   const at = new Date(Number(r.id) || Date.now()), month = ymdLocal(at).slice(0, 7), iso = at.toISOString();
-  const ok = items.filter(x => x.shop && x.n > 0), bad = items.filter(x => !x.shop).map(x => x.code);
-  ok.forEach(x => {
-    const id = 'vc-' + month + '-' + x.shop.id;
-    const cur = DB.campaigns.find(c => c.id === id);
+  const bad = items.filter(x => !x.shop).map(x => x.code), ok = [], missing = [];
+  items.filter(x => x.shop).forEach(x => {
+    const id = 'vc-' + month + '-' + x.shop.id, cur = DB.campaigns.find(c => c.id === id);
+    if(kind === 'D'){ if(cur){ DB.campaigns = DB.campaigns.filter(c => c !== cur); ok.push(x); } else missing.push(x.code); return; }
+    if(kind === 'R'){ if(cur){ cur.done = x.n; cur.updated_at = iso; ok.push(x); } else missing.push(x.code); return; }
+    if(!(x.n > 0)) return;
     const note = 'สั่งทาง LINE' + (r.sender ? ' โดย ' + r.sender : '') + ' · ' + fmtDate(ymdLocal(at));
-    if(cur){ cur.target = x.n; cur.note = note; cur.updated_at = iso; }
-    else DB.campaigns.push({id, kind: 'target', month, shop_id: x.shop.id, target: x.n, note, source: 'line', created_by: 'line', updated_at: iso});
+    const line = {line_group: r.group, line_user: r.user, line_quote: r.quote, line_sender: r.sender};
+    if(cur) Object.assign(cur, {target: x.n, note, updated_at: iso}, line);
+    else DB.campaigns.push({id, kind: 'target', month, shop_id: x.shop.id, target: x.n, done: 0, note, source: 'line', created_by: 'line', updated_at: iso, ...line});
+    ok.push(x);
   });
-  if(ok.length) logHistory('campaign_line', month + ': ' + ok.map(x => x.shop.code + ' ' + x.n).join(', '));
-  return {month, ok, bad};
+  const verb = kind === 'D' ? 'ลบ' : kind === 'R' ? 'ลงแล้ว' : 'ตั้ง';
+  if(ok.length) logHistory('campaign_line', month + ' ' + verb + ': ' + ok.map(x => x.shop.code + (kind === 'D' ? '' : ' ' + x.n)).join(', '));
+  return {month, kind, verb, ok, bad, missing};
 }
-/* ข้อความที่ส่งต่อท้าย /VDO/ (ไม่มี @) ภายใน 3 นาที จากคนเดิม → ยังเป็นรายการแคมเปญ */
+function campaignToast(res){
+  const parts = [res.verb + ' ' + (res.ok.map(x => x.shop.code + (res.kind === 'D' ? '' : ' ' + x.n)).join(', ') || '-')];
+  if(res.bad.length) parts.push('ไม่รู้จักร้าน ' + res.bad.join(', '));
+  if(res.missing.length) parts.push('เดือนนี้ยังไม่มีแคมเปญ ' + res.missing.join(', '));
+  toast('แคมเปญวิดีโอ ' + fmtMonthTH(res.month) + ': ' + parts.join(' · '), res.bad.length || res.missing.length ? 'error' : 'info');
+}
+/* ข้อความที่ส่งต่อท้าย /VDO/ /RVDO/ /DVDO/ (ไม่มี @) ภายใน 3 นาที จากคนเดิม → ยังเป็นคำสั่งแคมเปญเดิม */
 function vdoParentOf(r, rows){
   const ts = Number(r.id);
-  const cands = rows.filter(x => x.group === r.group && x.user === r.user && Number(x.id) < ts && ts - Number(x.id) <= LINE_FOLLOW_MS && lineTagsTarget(x.message) && /\/VDO\//i.test(x.message));
+  const cands = rows.filter(x => x.group === r.group && x.user === r.user && Number(x.id) < ts && ts - Number(x.id) <= LINE_FOLLOW_MS && lineTagsTarget(x.message) && CAMP_TAG_RE.test(x.message));
   if(!cands.length) return null;
   const parent = cands[cands.length - 1];
   const tagBetween = rows.some(x => x.group === r.group && Number(x.id) > Number(parent.id) && Number(x.id) < ts && x.message.includes('@'));
   return tagBetween ? null : parent;
 }
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-camp-month],[data-camp-edit],[data-camp-del]');
+  const t = e.target.closest('[data-camp-month],[data-camp-edit],[data-camp-del],[data-camp-done],[data-camp-undo]');
   if(!t) return;
   if(t.dataset.campMonth){ campState.month = t.dataset.campMonth; renderCampaigns(); return; }
+  const c = DB.campaigns.find(x => x.id === (t.dataset.campEdit || t.dataset.campDel || t.dataset.campDone || t.dataset.campUndo)); if(!c) return;
+  const shop = DB.shops.find(x => x.id === c.shop_id);
+  if(t.dataset.campDone){
+    if(!confirm('ร้าน ' + (shop ? shop.code : '') + ' ลงวิดีโอครบ ' + c.target + ' ตัวแล้ว?' + (c.line_group ? '\nพรุ่งนี้ 09:00 น. บอทจะ Reply ในกลุ่ม LINE ว่าเช็คหน่อย' : ''))) return;
+    Object.assign(c, {done: Number(c.target) || 0, done_at: nowISO(), done_by: currentUser.id, notify_at: c.line_group ? nextNineAmBangkok() : null, notified_at: null, updated_at: nowISO()});
+    logHistory('campaign_done', (shop ? shop.code : '') + ' ' + c.month + ' ครบ ' + c.target);
+    saveDB(); toast('บันทึกแล้ว' + (c.notify_at ? ' — พรุ่งนี้ 09:00 น. บอทจะแจ้งในกลุ่ม' : '')); renderCampaigns(); return;
+  }
+  if(t.dataset.campUndo){
+    if(!(isAdmin() || c.done_by === currentUser.id) || !confirm('ยกเลิก "ทำแล้ว"? (ถ้ายังไม่ถึง 09:00 บอทจะไม่แจ้ง)')) return;
+    Object.assign(c, {done_at: null, done_by: null, notify_at: null, updated_at: nowISO()});
+    saveDB(); renderCampaigns(); return;
+  }
   if(!isAdmin()) return;
-  const c = DB.campaigns.find(x => x.id === (t.dataset.campEdit || t.dataset.campDel)); if(!c) return;
   if(t.dataset.campEdit){
     const n = prompt('จำนวนวิดีโอที่ต้องลง', c.target); if(n === null) return;
     const v = parseInt(n, 10); if(!(v > 0)){ toast('จำนวนต้องมากกว่า 0', 'error'); return; }
@@ -2901,14 +2955,15 @@ async function pollLineLive(){
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
-      if(r.type !== 'DONE' && lineTagsTarget(r.message) && /\/VDO\//i.test(r.message)){
-        const res = applyCampaignRow(r, r.message);
-        if(res){ changed = true; if(!firstRun) toast('แคมเปญวิดีโอ ' + fmtMonthTH(res.month) + ': ' + (res.ok.map(x => x.shop.code + ' ' + x.n).join(', ') || '-') + (res.bad.length ? ' · ไม่รู้จักร้าน ' + res.bad.join(', ') : ''), res.bad.length ? 'error' : 'info'); }
+      if(r.type !== 'DONE' && lineTagsTarget(r.message) && CAMP_TAG_RE.test(r.message)){
+        const res = applyCampaignRow(r, r.message, campKindOf(r.message));
+        if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
       }
-      if(r.type !== 'DONE' && r.message && !r.message.includes('@') && vdoParentOf(r, rows)){
-        const res = applyCampaignRow(r, r.message);
-        if(res){ changed = true; if(!firstRun) toast('แคมเปญวิดีโอ: ' + res.ok.map(x => x.shop.code + ' ' + x.n).join(', '), 'info'); }
+      const campParent = (r.type !== 'DONE' && r.message && !r.message.includes('@')) ? vdoParentOf(r, rows) : null;
+      if(campParent){
+        const res = applyCampaignRow(Object.assign({}, r, {group: campParent.group, user: campParent.user, quote: campParent.quote}), r.message, campKindOf(campParent.message));
+        if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
       }
       if(r.type !== 'DONE' && lineTagsTarget(r.message)){
