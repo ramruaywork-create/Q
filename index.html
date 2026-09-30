@@ -497,6 +497,7 @@ function renderCurrentView(){
   const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
+  if(currentUser) renderNav();
 }
 function ensureDailyResetState(){
   if(!DB) return;
@@ -560,6 +561,7 @@ async function refreshRuntimeState(){
 }
 let saveErrorShown = null;
 function saveDB(){
+  if(currentUser && document.getElementById('navMenu')) setTimeout(renderNav, 0); // ตัวเลขแจ้งเตือนที่เมนูอัปเดตทันที
   if(apiMode){ schedulePush(); return; }
   try{ localStorage.setItem(LS_KEY, JSON.stringify(DB)); saveErrorShown = null; }
   catch(e){
@@ -761,13 +763,30 @@ const NAV = [
   {id:'settings',  label:'Settings',     icon:'settings',      admin:false}
 ];
 let currentView = 'dashboard';
+/* ตัวเลขแจ้งเตือนสีแดงที่เมนู */
+function navBadgeCount(id){
+  if(!DB || !currentUser) return 0;
+  if(id === 'importfix') return openImportFailures().length;
+  if(id === 'tasks'){ // User: งานของฉันที่ยังไม่เสร็จ · Admin: งานที่รอมอบหมาย
+    return (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length;
+  }
+  if(id === 'campaigns'){ // วิดีโอเดือนนี้ที่ยังต้องลง (ร้านที่เห็นได้)
+    const m = monthNow(), mine = new Set(getAssignedShopIds(currentUser));
+    return (DB.campaigns || []).filter(c => c.kind === 'target' && c.month === m && (isAdmin() || mine.has(c.shop_id))).reduce((sum, c) => {
+      const done = DB.campaigns.filter(v => v.kind === 'video' && v.month === m && v.shop_id === c.shop_id).length;
+      return sum + Math.max(0, (Number(c.target) || 0) - done);
+    }, 0);
+  }
+  return 0;
+}
 function renderNav(){
   const el = $('#navMenu');
-  el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map(n=>
-    '<div class="nav-item '+(currentView===n.id?'active':'')+'" data-nav="'+n.id+'">'+
+  el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map(n=>{
+    const cnt = navBadgeCount(n.id);
+    return '<div class="nav-item '+(currentView===n.id?'active':'')+'" data-nav="'+n.id+'">'+
     '<i data-lucide="'+n.icon+'" class="w-4.5 h-4.5" style="width:18px;height:18px;"></i><span class="flex-1">'+n.label+'</span>'+
-    (n.id==='importfix' && openImportFailures().length ? '<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num">'+openImportFailures().length+'</span>' : '')+'</div>'
-  ).join('');
+    (cnt ? '<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num min-w-[18px] text-center">'+(cnt > 99 ? '99+' : cnt)+'</span>' : '')+'</div>';
+  }).join('');
   if(window.lucide) lucide.createIcons();
 }
 function navTo(id){
