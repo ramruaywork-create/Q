@@ -73,6 +73,12 @@ tailwind.config = {
   @keyframes slideIn{ from{ opacity:0; transform:translateX(30px);} to{ opacity:1; transform:translateX(0);} }
   .modal-bg{ position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; animation:fadeIn .2s; }
   @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+  .shop-pick{ display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1.5px solid var(--border); background:#fff; font-weight:600; font-size:13px; color:#334155; transition:all .15s ease; cursor:pointer; }
+  .shop-pick:hover{ border-color:var(--accent); }
+  .shop-pick.on{ background:rgba(13,148,136,.1); border-color:var(--accent); color:#0f766e; }
+  .shop-pick .tick{ width:16px; height:16px; border-radius:999px; border:1.5px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; font-size:10px; }
+  .shop-pick.on .tick{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .shop-pick .cnt{ font-size:11px; font-weight:500; color:#94a3b8; }
   .shop-cell{ display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:600; margin:3px; cursor:pointer; transition:all .15s; border:1px solid transparent; }
   .shop-cell:hover{ transform:scale(1.05); }
   .shop-done{ background:#dcfce7; color:#15803d; }
@@ -505,6 +511,7 @@ function ensureDailyResetState(){
 }
 function isUserBusy(){
   if(currentView==='import' || currentView==='importfix' || currentView==='addsku') return true;
+  if(currentView==='check' && typeof importPreview !== 'undefined' && importPreview) return true;
   if(document.querySelector('#modalRoot .modal-bg')) return true;
   const a=document.activeElement;
   if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
@@ -740,7 +747,6 @@ const NAV = [
   {id:'check',     label:'เช็ก SKU',     icon:'scan-search',   admin:false},
   {id:'tiktokjobs',label:'ส่งงาน TikTok',icon:'video', admin:false},
   {id:'skulist',   label:'รายการ SKU',   icon:'list',          admin:false},
-  {id:'import',    label:'Import Excel', icon:'file-spreadsheet', admin:true},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
   {id:'tasks',     label:'ติดตามงาน',    icon:'list-todo',     admin:false},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',admin:false},
@@ -1482,6 +1488,62 @@ function excelCheckCell(p, shopId){
   return `<span class="pill pill-tiktok" title="${esc('ไฟล์: ' + (x.file || '-'))}"><i data-lucide="file-check-2" class="w-3 h-3"></i>เช็คแล้ว</span>`
     + `<div class="text-[10px] text-slate-400 mt-0.5">${esc(userById(x.by)?.name || '-')} · ${esc(localDate(x.at) ? fmtDate(localDate(x.at)) : '-')}</div>`;
 }
+/* Import Excel ในหน้าเช็ก SKU — นำเข้าให้ร้านที่เลือกอยู่ */
+let chkImportOpen = false;
+function checkImportBox(shop){
+  if(!shop) return '';
+  return `<details class="card overflow-hidden" id="chkImportBox" ${chkImportOpen || importPreview ? 'open' : ''}>
+    <summary class="px-4 py-3 cursor-pointer select-none flex items-center gap-2">
+      <i data-lucide="file-spreadsheet" class="w-5 h-5 text-cyan-600"></i>
+      <span class="font-semibold">นำเข้า Excel ของร้าน <span class="text-brand-700">${esc(shop.platform)} · ${esc(shop.code)}</span></span>
+      <span class="text-xs text-slate-400 ml-auto">คลิกเพื่อ${chkImportOpen || importPreview ? 'ซ่อน' : 'เปิด'}</span>
+    </summary>
+    <div class="px-4 pb-4 border-t pt-4" style="border-color:var(--border);">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="text-xs font-semibold text-slate-500 mb-1 block">ชนิดไฟล์</label>
+          <select id="importModeSelect" class="input">
+            <option value="sku" ${importMode==='sku'?'selected':''}>รายการ SKU / เช็ก SKU</option>
+            <option value="sales" ${importMode==='sales'?'selected':''}>สินค้าขายดี</option>
+          </select>
+        </div>
+        <div class="md:col-span-2 border-2 border-dashed border-slate-300 rounded-xl px-4 py-3 flex items-center gap-3 transition hover:border-brand-500 hover:bg-brand-50" id="dropZone">
+          <input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="hidden">
+          <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-300 flex-shrink-0"></i>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-slate-600 text-sm">ลากไฟล์มาวาง หรือเลือกไฟล์</p>
+            <p class="text-xs text-slate-400">.xlsx .xls .csv · Preview ก่อนนำเข้า · SKU ในไฟล์จะขึ้น “เช็คแล้ว”</p>
+          </div>
+          <button type="button" id="importBrowseBtn" class="btn btn-soft btn-sm flex-shrink-0"><i data-lucide="folder-up" class="w-4 h-4"></i>เลือกไฟล์</button>
+        </div>
+      </div>
+      <div id="importBusy" class="hidden mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-xl p-3">
+        <div class="flex items-center gap-3"><span class="inline-block h-5 w-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin"></span><span class="busyText text-sm font-medium">กำลังอ่านไฟล์...</span></div>
+      </div>
+      <div id="importUploadNotice" class="hidden mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">เลือกไฟล์ไม่ได้ ลองลากไฟล์มาวางแทน</div>
+      <div id="importResult" class="mt-3"></div>
+    </div>
+  </details>`;
+}
+document.addEventListener('toggle', e => {
+  if(e.target.id !== 'chkImportBox') return;
+  chkImportOpen = e.target.open;
+  const hint = e.target.querySelector('summary .ml-auto'); if(hint) hint.textContent = 'คลิกเพื่อ' + (chkImportOpen ? 'ซ่อน' : 'เปิด');
+}, true);
+document.addEventListener('click', e => {
+  if(e.target.closest('[data-open-import]')) chkImportOpen = true; // ปุ่ม "นำเข้า Excel" จากหน้าอื่น → เปิดกล่องนำเข้าไว้
+  const pl = e.target.closest('[data-chk-platform]'), sh = e.target.closest('[data-chk-shop]');
+  if(!pl && !sh) return;
+  if(importPreview && !confirm('มีไฟล์ Excel ที่ยังไม่ได้กดนำเข้า — เปลี่ยนร้านแล้วไฟล์นี้จะถูกยกเลิก ดำเนินการต่อ?')) return;
+  importPreview = null;
+  if(pl){
+    checkState.platform = pl.dataset.chkPlatform;
+    const visible = getAssignedShopIds(currentUser);
+    checkState.shopId = DB.shops.find(x => x.platform === checkState.platform && x.active !== false && (isAdmin() || visible.includes(x.id)))?.id || null;
+  } else checkState.shopId = sh.dataset.chkShop;
+  checkState.selected.clear();
+  renderCheck();
+});
 function renderCheck(){
   const visibleShopIds = getAssignedShopIds(currentUser);
   const shopsOf = plat => DB.shops.filter(s=>s.active!==false && s.platform===plat && (isAdmin() || visibleShopIds.includes(s.id)));
@@ -1506,32 +1568,29 @@ function renderCheck(){
   if(checkState.status!=='all') products = products.filter(p => { const w = getWorklog(p.id, checkState.platform, checkState.shopId); return (w?w.status:'pending') === checkState.status; });
   const totalFound = products.length;
   products = products.slice(0,500);
+  const keepImportHtml = importPreview ? ($('#importResult')?.innerHTML || '') : '';
+  importSelectedShopId = checkState.shopId;
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
-    <div class="card p-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div>
-          <label class="text-xs font-semibold text-slate-500 mb-1 block">Platform</label>
-          <select id="chkPlatform" class="input">
-            ${PLATFORMS.filter(pl=>shopsOf(pl).length).map(p=>`<option ${p===checkState.platform?'selected':''}>${p}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="text-xs font-semibold text-slate-500 mb-1 block">ร้าน</label>
-          <select id="chkShop" class="input">
-            ${shops.map(s=>`<option value="${s.id}" ${s.id===checkState.shopId?'selected':''}>${esc(s.code)} — ${esc(s.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="md:col-span-2">
-          <label class="text-xs font-semibold text-slate-500 mb-1 block">ค้นหา SKU / ชื่อ / แบรนด์</label>
-          <div class="relative">
-            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input id="chkSearch" class="input pl-9" placeholder="พิมพ์ SKU เช่น 020666" value="${esc(checkState.q)}" autofocus>
-          </div>
-        </div>
+    <div class="card p-4 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-semibold text-slate-500 w-20">Platform</span>
+        ${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="btn btn-sm ${pl===checkState.platform?'btn-primary':'btn-ghost'}" data-chk-platform="${pl}">${pl}</button>`).join('')}
       </div>
-      <div class="flex flex-wrap items-center gap-2 mt-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-semibold text-slate-500 w-20">${isAdmin()?'ร้าน':'ร้านของฉัน'}</span>
+        ${shops.map(sh=>{
+          const on = sh.id===checkState.shopId;
+          const done = DB.worklogs.filter(w=>w.shop_id===sh.id && w.platform===checkState.platform && w.status==='done').length;
+          return `<button class="shop-pick ${on?'on':''}" data-chk-shop="${sh.id}" title="${esc(sh.name)}"><span class="tick">${on?'✓':''}</span>${esc(sh.code)}<span class="cnt">${done} ทำแล้ว</span></button>`;
+        }).join('')}
+      </div>
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input id="chkSearch" class="input pl-9" placeholder="ค้นหา SKU / ชื่อ / แบรนด์ เช่น 020666" value="${esc(checkState.q)}" autofocus>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
         <span class="text-xs text-slate-400">สถานะ:</span>
         ${[['all','ทั้งหมด'],['pending','ยังไม่ได้ทำ'],['progress','กำลังทำ'],['done','ทำแล้ว']].map(([v,l])=>
           `<button class="btn btn-sm ${checkState.status===v?'btn-primary':'btn-ghost'}" data-chk-status="${v}">${l}</button>`).join('')}
@@ -1541,6 +1600,8 @@ function renderCheck(){
         </button>
       </div>
     </div>
+
+    ${checkImportBox(shops.find(sh=>sh.id===checkState.shopId))}
 
     <div class="card overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--border);">
@@ -1554,7 +1615,7 @@ function renderCheck(){
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="import">Import Excel</button></td></tr>':
+          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
           products.map(p=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
@@ -1580,6 +1641,7 @@ function renderCheck(){
       </table></div>
     </div>
   </div>`;
+  if(keepImportHtml && $('#importResult')) $('#importResult').innerHTML = keepImportHtml;
   if(window.lucide) lucide.createIcons();
 }
 
@@ -2144,7 +2206,7 @@ function renderImportFix(){
       <span class="flex-1"></span>
       <button class="btn btn-ghost btn-sm" data-fix-export ${list.length?'':'disabled style="opacity:.4"'}><i data-lucide="download" class="w-4 h-4"></i>Export CSV</button>
       ${importFixFilter==='done' && doneList.length ? '<button class="btn btn-danger btn-sm" data-fix-clear-done><i data-lucide="trash-2" class="w-4 h-4"></i>ล้างรายการที่แก้แล้ว</button>' : ''}
-      <button class="btn btn-soft btn-sm" data-nav="import"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>ไปหน้า Import</button>
+      <button class="btn btn-soft btn-sm" data-nav="check" data-open-import="1"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>นำเข้า Excel</button>
     </div>
     ${importFixFilter==='open' ? '<div class="card p-3 text-xs text-slate-500 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4 text-brand-600"></i>แก้ SKU ให้ถูกต้องแล้วกด <b>บันทึก</b> — ถ้า SKU มีในระบบแล้วจะปิดรายการให้ ถ้ายังไม่มีจะเพิ่มเป็นสินค้าใหม่ · ระบบตัดสี/ไซส์ให้อัตโนมัติ</div>' : ''}
     <div class="card overflow-hidden">
