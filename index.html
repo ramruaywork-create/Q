@@ -844,6 +844,25 @@ function stripSkuVariant(parts){
   }
   return out;
 }
+/* ส่วนที่ถูกตัดออกจาก SKU → สี / ไซส์  เช่น YS001-เทา-YXL → {colors:[เทา], sizes:[YXL]} */
+const SIZE_RANK = s => {
+  const t = String(s).toUpperCase(), youth = /^Y(?!$)/.test(t) && SKU_SIZE_RE.test(t) ? 1 : 0, core = youth ? t.slice(1) : t;
+  const order = {XXXS:0, XXS:1, XS:2, S:3, M:4, L:5, XL:6, XXL:7, '2XL':7, '2L':7, XXXL:8, '3XL':8, '3L':8, XXXXL:9, '4XL':9, '4L':9};
+  const n = core.match(/^([5-9])X?L$/); const r = n ? 5 + Number(n[1]) : order[core];
+  return r === undefined ? 1000 : (youth ? r - 100 : r); // ไซส์เด็กมาก่อน, ไซส์ไม่รู้จัก/FREE ไว้ท้าย
+};
+const sortSizes = list => [...new Set(list)].sort((a, b) => SIZE_RANK(a) - SIZE_RANK(b) || String(a).localeCompare(String(b)));
+function sizeRangeLabel(list){
+  const s = sortSizes(list);
+  return s.length > 2 ? s[0] + '–' + s[s.length - 1] : s.join(', ');
+}
+function skuVariantParts(raw, base){
+  const parts = String(raw || '').split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
+  const rest = parts.slice(String(base || '').split(/\s*-\s*/).filter(Boolean).length);
+  const colors = [], sizes = [];
+  rest.forEach(x => (SKU_SIZE_RE.test(x.toUpperCase().replace(/[()\[\]\s.]/g, '')) ? sizes : colors).push(x));
+  return {colors, sizes};
+}
 function normalizeBaseSku(sku){
   const raw = String(sku || '').trim();
   if(!raw) return raw;
@@ -1529,11 +1548,11 @@ function renderCheck(){
       <div class="overflow-x-auto">
       <table class="data">
         <thead><tr>
-          <th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สถานะงาน</th><th>BigSeller</th>
+          <th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th>
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="6" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="addsku">เพิ่ม SKU ใหม่</button> หรือ <button class="text-brand-600 font-semibold underline" data-nav="import">Import Excel</button></td></tr>':
+          ${products.length===0?'<tr><td colspan="7" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="addsku">เพิ่ม SKU ใหม่</button> หรือ <button class="text-brand-600 font-semibold underline" data-nav="import">Import Excel</button></td></tr>':
           products.map(p=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
@@ -1543,13 +1562,9 @@ function renderCheck(){
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
               <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
+              <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
+              <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
               <td>${statusPill(st)}${w?`<div class="text-[10px] text-slate-400 mt-0.5">${esc(userById(w.user_id)?.name||'-')} · ${fmtDate(w.work_date)}</div>`:''}</td>
-              <td>
-                <div class="flex items-center gap-2">
-                  <div class="toggle ${w&&w.bigseller_done?'on':''}" data-bs-pid="${p.id}" title="ลง BigSeller แล้วหรือยัง"></div>
-                  <span class="text-[11px] ${w&&w.bigseller_done?'text-bigseller font-semibold':'text-slate-300'}">${w&&w.bigseller_done?'ลงแล้ว':'ยังไม่ลง'}</span>
-                </div>
-              </td>
               <td>
                 ${st==='done'
                   ? `<span class="pill pill-done"><i data-lucide="check" class="w-3.5 h-3.5"></i>เสร็จ</span> <button class="btn btn-ghost btn-sm ml-1 text-xs" data-undo="${p.id}">ยกเลิก</button>`
@@ -2899,15 +2914,24 @@ function mergeRemoteProducts(rows){
   rows.forEach(r => {
     const raw = String(r.sku_merchant || '').trim(); if(!raw) return;
     const sku = normalizeBaseSku(raw), k = sku.toUpperCase(), brand = String(r.brand || '').trim();
-    const cur = bases.get(k);
-    if(!cur) bases.set(k, {sku, brand}); else if(!cur.brand && brand) cur.brand = brand;
+    const v = skuVariantParts(raw, sku);
+    let cur = bases.get(k);
+    if(!cur){ cur = {sku, brand, colors: new Set(), sizes: new Set()}; bases.set(k, cur); } else if(!cur.brand && brand) cur.brand = brand;
+    v.colors.forEach(c => cur.colors.add(c)); v.sizes.forEach(z => cur.sizes.add(z));
   });
   const have = new Map(DB.products.map(p => [String(p.sku || '').trim().toUpperCase(), p]));
   let added = 0, updated = 0;
   bases.forEach((v, k) => {
     const p = have.get(k);
-    if(p){ if(!p.brand && v.brand){ p.brand = v.brand; updated++; } return; }
-    DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, created_at: nowISO(), active: true, source: 'supabase'});
+    const colors = [...v.colors], sizes = sortSizes([...v.sizes]);
+    if(p){
+      let touched = false;
+      if(!p.brand && v.brand){ p.brand = v.brand; touched = true; }
+      if(JSON.stringify(p.colors || []) !== JSON.stringify(colors) || JSON.stringify(p.sizes || []) !== JSON.stringify(sizes)){ p.colors = colors; p.sizes = sizes; touched = true; }
+      if(touched){ p.updated_at = nowISO(); updated++; }
+      return;
+    }
+    DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, colors, sizes, created_at: nowISO(), active: true, source: 'supabase'});
     added++;
   });
   return {bases: bases.size, added, updated};
@@ -2924,7 +2948,7 @@ document.addEventListener('click', async e => {
     const r = mergeRemoteProducts(rows);
     DB.meta = DB.meta || {};
     DB.meta.rr_products = {url, key, last_sync: nowISO(), rows: rows.length, bases: r.bases};
-    logHistory('products_sync', 'ดึงจาก Supabase ' + rows.length + ' แถว → ' + r.bases + ' SKU · เพิ่มใหม่ ' + r.added + (r.updated ? ' · เติมแบรนด์ ' + r.updated : ''));
+    logHistory('products_sync', 'ดึงจาก Supabase ' + rows.length + ' แถว → ' + r.bases + ' SKU · เพิ่มใหม่ ' + r.added + (r.updated ? ' · อัปเดต ' + r.updated : ''));
     saveDB();
     toast('ดึงสินค้าแล้ว: ' + rows.length.toLocaleString() + ' แถว → ' + r.bases.toLocaleString() + ' SKU · เพิ่มใหม่ ' + r.added.toLocaleString());
     renderSettings();
