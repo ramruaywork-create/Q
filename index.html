@@ -821,7 +821,7 @@ function showApp(){
 
 /* ---------- Dashboard ---------- */
 /* ตัดสี/ไซส์ออกจาก SKU เช่น 020666-เทา-3XL → 020666, WA-214PLACL32-PH-3L → WA-214PLACL32 */
-const SKU_SIZE_RE = /^(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|XXXXL|[2-9]XL|[2-9]L|SS|F|FS|FREE|FREESIZE|ONESIZE|OS)$/;
+const SKU_SIZE_RE = /^(Y?(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|XXXXL|[2-9]XL|[2-9]L)|SS|F|FS|FREE|FREESIZE|ONESIZE|OS)$/; // Y = ไซส์เด็ก เช่น YS, YXL
 const SKU_COLOR_RE = /^(DARK|LIGHT|NEON|D|L)?(BLACK|WHITE|RED|BLUE|GREEN|YELLOW|ORANGE|PINK|PURPLE|BROWN|GREY|GRAY|NAVY|BEIGE|CREAM|KHAKI|GOLD|SILVER|TEAL|INDIGO|MAROON|CORAL|WINE|MINT|LIME|AQUA|OFFWHITE|IVORY|SKY|SKYBLUE|ROYAL|ROYALBLUE|CHARCOAL|OLIVE)$/;
 let _knownSkuCache = {n:-1, set:null};
 function knownSkuSet(){
@@ -2932,6 +2932,66 @@ document.addEventListener('input', e => {
   $('#taskList').innerHTML = renderTaskList(); if(window.lucide) lucide.createIcons();
 });
 
+/* ---------- ดึงสินค้าจาก Supabase (ตาราง products ของโปรเจกต์ร้าน: sku_merchant, brand) ---------- */
+function isSecretSupabaseKey(key){
+  if(/^sb_secret_/i.test(key)) return true;
+  try{ const p = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); return p.role === 'service_role'; }catch(e){ return false; }
+}
+async function fetchRemoteProducts(url, key, onProgress){
+  const base = url.replace(/\/+$/, '') + '/rest/v1/products?select=brand,sku_merchant&order=id.asc';
+  const headers = {apikey: key};
+  if(/^eyJ/.test(key)) headers.Authorization = 'Bearer ' + key; // คีย์ anon แบบเก่า (JWT)
+  const out = [], page = 1000;
+  for(let from = 0; ; from += page){
+    const res = await fetch(base, {headers: {...headers, 'Range-Unit': 'items', Range: from + '-' + (from + page - 1)}, cache: 'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 160));
+    const rows = await res.json();
+    out.push(...rows); if(onProgress) onProgress(out.length);
+    if(rows.length < page) break;
+  }
+  return out;
+}
+/* ตัดสี/ไซส์ → รวมเป็น SKU หลัก แล้วเพิ่มเฉพาะที่ยังไม่มี (เติมแบรนด์ให้ SKU เดิมที่ยังว่าง) */
+function mergeRemoteProducts(rows){
+  const bases = new Map();
+  rows.forEach(r => {
+    const raw = String(r.sku_merchant || '').trim(); if(!raw) return;
+    const sku = normalizeBaseSku(raw), k = sku.toUpperCase(), brand = String(r.brand || '').trim();
+    const cur = bases.get(k);
+    if(!cur) bases.set(k, {sku, brand}); else if(!cur.brand && brand) cur.brand = brand;
+  });
+  const have = new Map(DB.products.map(p => [String(p.sku || '').trim().toUpperCase(), p]));
+  let added = 0, updated = 0;
+  bases.forEach((v, k) => {
+    const p = have.get(k);
+    if(p){ if(!p.brand && v.brand){ p.brand = v.brand; updated++; } return; }
+    DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, created_at: nowISO(), active: true, source: 'supabase'});
+    added++;
+  });
+  return {bases: bases.size, added, updated};
+}
+document.addEventListener('click', async e => {
+  if(!e.target.closest('#rrSync') || !isAdmin()) return;
+  const url = $('#rrUrl').value.trim(), key = $('#rrKey').value.trim(), status = $('#rrStatus'), btn = $('#rrSync');
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url)){ toast('Project URL ไม่ถูกต้อง (เช่น https://xxxx.supabase.co)', 'error'); return; }
+  if(!key){ toast('กรุณาใส่ Publishable key', 'error'); return; }
+  if(isSecretSupabaseKey(key)){ toast('นี่คือ secret / service_role key — ห้ามใส่ในเว็บ ใช้ Publishable key เท่านั้น', 'error'); $('#rrKey').value = ''; return; }
+  btn.disabled = true;
+  try{
+    const rows = await fetchRemoteProducts(url, key, n => { status.textContent = 'กำลังดึง... ' + n.toLocaleString() + ' แถว'; });
+    const r = mergeRemoteProducts(rows);
+    DB.meta = DB.meta || {};
+    DB.meta.rr_products = {url, key, last_sync: nowISO(), rows: rows.length, bases: r.bases};
+    logHistory('products_sync', 'ดึงจาก Supabase ' + rows.length + ' แถว → ' + r.bases + ' SKU · เพิ่มใหม่ ' + r.added + (r.updated ? ' · เติมแบรนด์ ' + r.updated : ''));
+    saveDB();
+    toast('ดึงสินค้าแล้ว: ' + rows.length.toLocaleString() + ' แถว → ' + r.bases.toLocaleString() + ' SKU · เพิ่มใหม่ ' + r.added.toLocaleString());
+    renderSettings();
+  }catch(err){
+    status.textContent = '';
+    toast('ดึงสินค้าไม่สำเร็จ: ' + err.message + (/HTTP 40[13]/.test(err.message) ? ' — ตรวจ key หรือ RLS ของตาราง products ให้อ่านได้' : ''), 'error');
+  }finally{ btn.disabled = false; }
+});
+
 /* ---------- Settings ---------- */
 function renderSettings(){
   $('#view').innerHTML = `
@@ -2950,6 +3010,16 @@ function renderSettings(){
       <div class="flex flex-wrap gap-2">
         <button id="expBtn" class="btn btn-ghost"><i data-lucide="download" class="w-4 h-4"></i>Export ข้อมูล (JSON)</button>
         <label class="btn btn-ghost cursor-pointer"><i data-lucide="upload" class="w-4 h-4"></i>Import สำรอง<input type="file" id="impBackup" accept=".json" class="hidden"></label>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-bold text-lg mb-1 flex items-center gap-2"><i data-lucide="cloud-download" class="w-5 h-5 text-brand-600"></i>ดึงสินค้าจาก Supabase</h3>
+      <p class="text-xs text-slate-500 mb-3">อ่านตาราง <span class="font-mono">products</span> (คอลัมน์ sku_merchant, brand) ตัดสี/ไซส์ออก แล้วเพิ่มเป็น SKU ที่ยังไม่มี · SKU เดิมและงานที่ทำไว้ไม่ถูกลบ
+        ${(DB.meta && DB.meta.rr_products && DB.meta.rr_products.last_sync) ? `<br>ดึงล่าสุด ${esc(localDateTime(DB.meta.rr_products.last_sync))} · ${esc(String(DB.meta.rr_products.rows||0))} แถว → ${esc(String(DB.meta.rr_products.bases||0))} SKU` : ''}</p>
+      <div class="grid grid-cols-1 gap-2">
+        <input id="rrUrl" class="input font-mono text-xs" placeholder="Project URL เช่น https://xxxx.supabase.co" value="${esc(DB.meta && DB.meta.rr_products ? DB.meta.rr_products.url || '' : '')}">
+        <input id="rrKey" class="input font-mono text-xs" placeholder="Publishable key (sb_publishable_... หรือ anon) — ห้ามใช้ secret / service_role" value="${esc(DB.meta && DB.meta.rr_products ? DB.meta.rr_products.key || '' : '')}">
+        <div class="flex items-center gap-2"><button id="rrSync" class="btn btn-primary"><i data-lucide="refresh-cw" class="w-4 h-4"></i>ดึงสินค้า</button><span id="rrStatus" class="text-xs text-slate-500"></span></div>
       </div>
     </div>
     `:''}
