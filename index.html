@@ -3001,6 +3001,7 @@ async function pollLineLive(){
     const v = (c, i) => String(c[i]?.v ?? '').trim();
     const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8), quote:v(c,9)}; })
       .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
+    rows.forEach(r => { if(r.type === 'IMAGE') r.message = r.message.replace(/^id:/i, '').trim(); }); // Make ใส่ "id:" นำหน้า กันชีตปัดเลขยาว
     DB.meta = DB.meta || {};
     const firstRun = DB.meta.lineLastTs == null;
     let changed = false;
