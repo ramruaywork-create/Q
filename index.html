@@ -1195,7 +1195,7 @@ function renderDashboard(){
           <thead><tr><th>SKU</th><th>Platform</th><th>ร้าน</th><th>สถานะ</th><th>BigSeller</th><th>TikTok</th><th>เวลา</th></tr></thead>
           <tbody>${[...myDone, ...myProgress].filter(w=>productById(w.product_id)).slice(0,12).map(w=>{
             const p=productById(w.product_id), s=shopById(w.shop_id), t=tiktokOf(w.id);
-            return `<tr data-goto-sku="${p.id}" style="cursor:pointer">
+            return `<tr>
               <td class="font-mono font-semibold">${esc(p.sku)}</td>
               <td>${esc(w.platform)}</td><td><b>${esc(s?.code||'-')}</b></td>
               <td>${statusPill(w.status)}</td>
@@ -1541,7 +1541,7 @@ function renderCheck(){
             const checked = checkState.selected.has(p.id)?'checked':'';
             return `<tr>
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
-              <td class="font-mono font-semibold cursor-pointer text-brand-700 hover:underline" data-goto-sku="${p.id}">${esc(p.sku)}</td>
+              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
               <td>${statusPill(st)}${w?`<div class="text-[10px] text-slate-400 mt-0.5">${esc(userById(w.user_id)?.name||'-')} · ${fmtDate(w.work_date)}</div>`:''}</td>
               <td>
@@ -1649,7 +1649,7 @@ function renderSkuList(){
           ${pageRows.length===0?'<tr><td colspan="9" class="text-center py-10 text-slate-400">ไม่พบข้อมูล</td></tr>':
           pageRows.map(r=>{
             const p=r.p, s=r.shopId?shopById(r.shopId):null, w=r.w, st=w?w.status:'pending', t=w?tiktokOf(w.id):null;
-            return `<tr style="cursor:pointer" data-goto-sku="${p.id}">
+            return `<tr>
               <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
               <td class="text-xs text-slate-500">${esc(p.brand||'-')}</td>
               <td>${r.platform ? esc(r.platform) : '<span class="text-slate-300">-</span>'}</td>
@@ -1671,64 +1671,6 @@ function renderSkuList(){
     </div>
   </div>`;
   if(window.lucide) lucide.createIcons();
-}
-
-/* ---------- SKU Detail modal ---------- */
-function showSkuDetail(pid){
-  const p = productById(pid); if(!p) return;
-  const visibleShopIds = getAssignedShopIds(currentUser);
-  const groups = PLATFORMS.map(plat=>{
-    const shops = DB.shops.filter(s=>s.platform===plat && (isAdmin() || visibleShopIds.includes(s.id)));
-    return {plat, shops: shops.map(s=>{
-      const w = getWorklog(p.id, plat, s.id);
-      return {shop:s, w, status: w?w.status:'pending', tiktok: w?tiktokOf(w.id):null};
-    })};
-  });
-  const doneCount = groups.reduce((a,g)=>a+g.shops.filter(x=>x.status==='done').length,0);
-  const modal = document.createElement('div');
-  modal.className='modal-bg';
-  modal.innerHTML = `
-  <div class="card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 fade-in">
-    <div class="flex items-start justify-between mb-4">
-      <div>
-        <p class="text-xs text-slate-400 font-medium">SKU Detail</p>
-        <h3 class="text-xl font-extrabold font-mono flex items-center gap-2">${esc(p.sku)}<button class="btn btn-ghost btn-sm" data-edit-product="${p.id}" title="แก้ไข SKU / แบรนด์"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>แก้ไข</button></h3>
-        <p class="text-sm text-slate-500">${esc(p.name||'')} · <b>${esc(p.brand||'-')}</b></p>
-      </div>
-      <div class="text-right">
-        <p class="text-2xl font-extrabold badge-num text-brand-600">${doneCount}/18</p>
-        <p class="text-xs text-slate-400">ร้านที่ทำแล้ว</p>
-      </div>
-    </div>
-    <div class="space-y-4">
-      ${groups.map(g=>`
-        <div>
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full" style="background:${g.plat==='Shopee'?'#ee4d2d':g.plat==='Lazada'?'#0f146d':'#000'}"></span>
-            ${g.plat} (${g.shops.filter(x=>x.status==='done').length}/${g.shops.length})
-          </p>
-          <div class="flex flex-wrap">
-            ${g.shops.map(x=>{
-              const cls = x.status==='done'?'shop-done':x.status==='progress'?'shop-progress':'shop-pending';
-              const icon = x.status==='done'?'check':x.status==='progress'?'loader':'circle';
-              return `<div class="shop-cell ${cls}" data-detail-mark="${p.id}|${g.plat}|${x.shop.id}" title="คลิกเพื่อเปลี่ยนสถานะ">
-                <i data-lucide="${icon}" class="w-3 h-3"></i>${esc(x.shop.code)}${x.tiktok?' <i data-lucide="video" class="w-3 h-3 text-tiktok"></i>':''}${x.w&&x.w.bigseller_done?' <i data-lucide="store" class="w-3 h-3 text-bigseller"></i>':''}
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`).join('')}
-    </div>
-    <div class="flex gap-2 mt-6 pt-4 border-t" style="border-color:var(--border);">
-      <button class="btn btn-ghost flex-1" id="detailClose">ปิด</button>
-      ${isAdmin()?`<button class="btn btn-danger flex-1" data-deactivate-product="${p.id}">ปิดใช้ SKU</button>`:''}
-      <button class="btn btn-primary flex-1" data-nav="check" data-detail-go="${p.id}">ไปหน้าเช็ก SKU</button>
-    </div>
-    <p class="text-[11px] text-slate-400 mt-3 text-center">คลิกที่ชื่อร้านเพื่อทำเครื่องหมาย ทำแล้ว / กำลังทำ / ยกเลิก · ไอคัน <span class="text-tiktok">video</span>=มีลิงก์ TikTok · <span class="text-bigseller">store</span>=ลง BigSeller แล้ว</p>
-  </div>`;
-  $('#modalRoot').appendChild(modal);
-  if(window.lucide) lucide.createIcons();
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  modal.querySelector('#detailClose').addEventListener('click', ()=>modal.remove());
 }
 
 /* ---------- Edit SKU ---------- */
@@ -1772,7 +1714,7 @@ function openEditProduct(pid){
     saveDB();
     modal.remove();
     toast('แก้ไข SKU เรียบร้อย');
-    $('#modalRoot').innerHTML = ''; renderCurrentView(); showSkuDetail(p.id);
+    $('#modalRoot').innerHTML = ''; renderCurrentView();
   };
   modal.addEventListener('click', e => {
     if(e.target === modal || e.target.closest('[data-close-edit]')){ modal.remove(); return; }
@@ -2274,7 +2216,7 @@ function renderMyWork(){
           ${logs.length===0?'<tr><td colspan="7" class="text-center py-10 text-slate-400">ไม่มีงานในวันที่เลือก</td></tr>':
           logs.filter(w=>productById(w.product_id)).sort((a,b)=>(b.updated_at||'').localeCompare(a.updated_at||'')).map(w=>{
             const p=productById(w.product_id), s=shopById(w.shop_id), t=tiktokOf(w.id);
-            return `<tr data-goto-sku="${p.id}" style="cursor:pointer">
+            return `<tr>
               <td class="font-mono font-semibold">${esc(p?.sku||'-')}</td>
               <td>${esc(w.platform)}</td><td><b>${esc(s?.code||'-')}</b></td>
               <td>${statusPill(w.status)}</td><td>${bigsellerPill(w)}</td>
@@ -3060,7 +3002,7 @@ function renderSettings(){
    EVENT DELEGATION
    ============================================================ */
 document.addEventListener('click', e=>{
-  const t = e.target.closest('[data-nav],[data-goto-sku],[data-goto-check],[data-mark-done],[data-mark-progress],[data-undo],[data-bs-pid],[data-tt-add],[data-tt-edit],[data-detail-mark],[data-detail-go],[data-copy-user],[data-export-user],[data-toggle-user],[data-del-user],[data-del-shop],[data-lst-page],[data-chk-status],[data-reset-pw],[data-deactivate-product],[data-edit-product],[data-assign-shops],[data-save-user-shop],[data-tiktok-new],[data-tiktok-delete],[data-open-news],[data-news-prev],[data-news-next],[data-news-dot],[data-fix-filter],[data-addsku-tab],[data-fix-save],[data-fix-skip],[data-fix-del],[data-fix-reopen],[data-fix-export],[data-fix-clear-done]');
+  const t = e.target.closest('[data-nav],[data-goto-check],[data-mark-done],[data-mark-progress],[data-undo],[data-bs-pid],[data-tt-add],[data-tt-edit],[data-copy-user],[data-export-user],[data-toggle-user],[data-del-user],[data-del-shop],[data-lst-page],[data-chk-status],[data-reset-pw],[data-deactivate-product],[data-edit-product],[data-assign-shops],[data-save-user-shop],[data-tiktok-new],[data-tiktok-delete],[data-open-news],[data-news-prev],[data-news-next],[data-news-dot],[data-fix-filter],[data-addsku-tab],[data-fix-save],[data-fix-skip],[data-fix-del],[data-fix-reopen],[data-fix-export],[data-fix-clear-done]');
   if(!t) return;
   const pid = t.dataset.markDone || t.dataset.markProgress || t.dataset.undo || t.dataset.bsPid || t.dataset.ttAdd || t.dataset.ttEdit;
   if(t.dataset.nav){
@@ -3142,7 +3084,6 @@ document.addEventListener('click', e=>{
     renderTikTokJobs();
     return;
   }
-  if(t.dataset.gotoSku){ showSkuDetail(t.dataset.gotoSku); return; }
   if(t.dataset.gotoCheck){ checkState.q=productById(t.dataset.gotoCheck)?.sku||''; navTo('check'); return; }
   if(t.dataset.markDone){
     const pid=t.dataset.markDone;
@@ -3168,22 +3109,6 @@ document.addEventListener('click', e=>{
     });
     return;
   }
-  if(t.dataset.detailMark){
-    const [pid_, plat, sid] = t.dataset.detailMark.split('|');
-    const w = getWorklog(pid_, plat, sid);
-    const st = w?w.status:'pending';
-    const next = st==='pending'?'done':st==='progress'?'done':'pending';
-    if(next==='pending' && w && !w.bigseller_done && !tiktokOf(w.id)){
-      // remove record entirely if no other data
-      DB.worklogs = DB.worklogs.filter(x=>x.id!==w.id);
-      DB.tiktoks = DB.tiktoks.filter(x=>x.worklog_id!==w.id);
-      logHistory('undo', productById(pid_)?.sku+' @ '+plat); saveDB();
-    } else {
-      markWork(pid_, plat, sid, next);
-    }
-    $('#modalRoot').innerHTML=''; showSkuDetail(pid_); toast('อัปเดตสถานะแล้ว'); return;
-  }
-  if(t.dataset.detailGo){ $('#modalRoot').innerHTML=''; checkState.q=productById(t.dataset.detailGo)?.sku||''; navTo('check'); return; }
   if(t.dataset.copyUser){ const txt=buildReportText(reportDate, t.dataset.copyUser); copyText(txt).then(ok=>toast(ok?'คัดลอกรายงานแล้ว ✓':'คัดลอกไม่สำเร็จ กรุณาลองใหม่', ok?'success':'error')); return; }
   if(t.dataset.exportUser){ const uid_ = t.dataset.exportUser; const u = userById(uid_); const txt = buildReportText(reportDate, uid_); const safe = (u && u.name ? u.name : 'user').replace(/\s+/g,'_'); downloadTextFile(txt, `report-${safe}-${reportDate}.txt`); toast('บันทึกรายงานเป็นไฟล์ .txt แล้ว'); return; }
   if(t.dataset.toggleUser){ const u=userById(t.dataset.toggleUser); if(u){u.active=!u.active; saveDB(); toast(u.active?'เปิดใช้งานแล้ว':'ปิดใช้งานแล้ว'); renderUsers();} return; }
