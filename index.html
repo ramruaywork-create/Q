@@ -391,7 +391,10 @@ const DEFAULT_SHOPS = [
   ['Lazada','PR'],['Lazada','ZN'],['Lazada','PT'],['Lazada','WS'],['Lazada','TP'],['Lazada','PP'],
   ['TikTok','SP'],['TikTok','TJ'],['TikTok','PROSPERSPORT'],['TikTok','PM']
 ];
-const PLATFORMS = ['Shopee','Lazada','TikTok'];
+const PLATFORMS = ['Shopee','Lazada','TikTok']; // + แพลตฟอร์มอื่นที่มีร้านอยู่ (เพิ่มให้ใน syncPlatforms)
+function syncPlatforms(db){
+  ((db || DB || {}).shops || []).forEach(sh => { const pl = String(sh.platform || '').trim(); if(pl && !PLATFORMS.includes(pl)) PLATFORMS.push(pl); });
+}
 const TIKTOK_SHOPS = ['PM','PROSPERSPORT','SP','TJ'];
 
 /* ---------- seed demo data ---------- */
@@ -484,6 +487,7 @@ function migrateDB(db){
   db.history.forEach(h => { if(!h.id) h.id = uid(); });
   if(db.history.length > 3000) db.history.length = 3000;
   db.users.forEach(u => normalizeUserShopAccessFor(db, u));
+  syncPlatforms(db);
   return db;
 }
 function loadDB(){
@@ -770,9 +774,8 @@ function navBadgeCount(id){
   if(id === 'tasks'){ // User: งานของฉันที่ยังไม่เสร็จ · Admin: งานที่รอมอบหมาย
     return (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length;
   }
-  if(id === 'campaigns'){ // แคมเปญเดือนนี้ที่ตั้ง/แก้ใหม่หลังจากเปิดดูครั้งล่าสุด
-    let seen = ''; try{ seen = localStorage.getItem(campSeenKey()) || ''; }catch(e){}
-    return campaignTargets(monthNow()).filter(x => String(x.c.updated_at || '') > seen).length;
+  if(id === 'campaigns'){ // ร้านในแคมเปญเดือนนี้ที่ยังไม่กด "ทำแล้ว" (แดงค้างจนกว่าจะทำเสร็จ)
+    return campaignTargets(monthNow()).filter(x => !x.c.done_at).length;
   }
   return 0;
 }
@@ -2542,7 +2545,7 @@ function renderShops(){
     <div class="card p-5">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="store-plus" class="w-5 h-5 text-brand-600"></i>เพิ่มร้านใหม่</h3>
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <select id="nsPlat" class="input">${PLATFORMS.map(p=>`<option>${p}</option>`).join('')}</select>
+        <select id="nsPlat" class="input">${PLATFORMS.map(p=>`<option>${esc(p)}</option>`).join('')}<option value="__new">+ แพลตฟอร์มอื่น…</option></select>
         <input id="nsCode" class="input font-mono" placeholder="รหัสร้าน เช่น DP">
         <input id="nsName" class="input" placeholder="ชื่อร้าน (เต็ม)">
         <button id="nsAdd" class="btn btn-primary"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มร้าน</button>
@@ -3608,10 +3611,15 @@ document.addEventListener('click', e=>{
     saveDB(); toast('เพิ่มผู้ใช้ '+name+' สำเร็จ'); renderUsers();
   }
   else if(e.target.id==='nsAdd' || e.target.closest('#nsAdd')){
-    const plat=$('#nsPlat').value, code=$('#nsCode').value.trim(), name=$('#nsName').value.trim()||code;
+    let plat=$('#nsPlat').value; const code=$('#nsCode').value.trim(), name=$('#nsName').value.trim()||code;
     if(!code){ toast('กรุณากรอกรหัสร้าน','error'); return; }
+    if(plat === '__new'){
+      plat = (prompt('ชื่อแพลตฟอร์มใหม่ เช่น Facebook, LINE Shopping, Website') || '').trim();
+      if(!plat) return;
+      plat = PLATFORMS.find(x => x.toLowerCase() === plat.toLowerCase()) || plat; // สะกดตรงกับที่มีอยู่แล้ว → ใช้อันเดิม
+    }
     if(DB.shops.some(s=>s.platform===plat && s.code.toLowerCase()===code.toLowerCase())){ toast('ร้านนี้มีอยู่แล้วใน Platform นี้','error'); return; }
-    DB.shops.push({id:uid(), platform:plat, code, name, active:true}); saveDB(); toast('เพิ่มร้าน '+code+' สำเร็จ'); renderShops();
+    DB.shops.push({id:uid(), platform:plat, code, name, active:true}); syncPlatforms(); saveDB(); toast('เพิ่มร้าน '+plat+' · '+code+' สำเร็จ'); renderShops();
   }
   else if(e.target.id==='chgBtn' || e.target.closest('#chgBtn')){
     const old=$('#chgOld').value, nw=$('#chgNew').value;
