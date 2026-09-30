@@ -2551,7 +2551,7 @@ function taskRows(){
   const q = taskState.q.trim().toLowerCase();
   const rows = visibleTasks().filter(t =>
     (taskState.filter === 'all' || (taskState.filter === 'late' ? taskIsLate(t) : t.status === taskState.filter)) &&
-    (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? !t.assignee_id : t.assignee_id === taskState.person)) &&
+    (!taskState.person || (taskState.person === 'me' ? t.assignee_id === currentUser.id : taskState.person === '-' ? (!t.assignee_id && t.status !== 'done') : t.assignee_id === taskState.person)) &&
     (!q || [t.title, t.detail, taskPerson(t), taskShopLabel(t)].join(' ').toLowerCase().includes(q)));
   const doneLast = (a, b) => (a.status === 'done') - (b.status === 'done');
   const byDue = (a, b) => (a.due || '9').localeCompare(b.due || '9');
