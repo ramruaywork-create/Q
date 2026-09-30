@@ -483,7 +483,7 @@ function loadDB(){
   saveDB();
 }
 function renderCurrentView(){
-  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, addsku:renderAddSku, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
+  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
 }
@@ -740,7 +740,6 @@ const NAV = [
   {id:'check',     label:'เช็ก SKU',     icon:'scan-search',   admin:false},
   {id:'tiktokjobs',label:'ส่งงาน TikTok',icon:'video', admin:false},
   {id:'skulist',   label:'รายการ SKU',   icon:'list',          admin:false},
-  {id:'addsku',    label:'เพิ่ม SKU',    icon:'plus-circle',   admin:false},
   {id:'import',    label:'Import Excel', icon:'file-spreadsheet', admin:true},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
   {id:'mywork',    label:'งานของฉัน',    icon:'user-check',    admin:false},
@@ -1094,7 +1093,6 @@ function renderDashboard(){
   ];
 
   const quick = [
-    {id:'addsku', icon:'plus-circle', label:'เพิ่ม SKU', color:'#0d9488'},
     {id:'import', icon:'file-spreadsheet', label:'Import Excel', color:'#0891b2'},
     {id:'check', icon:'scan-search', label:'เช็ก SKU', color:'#2563eb'},
     {id:'report', icon:'clipboard-list', label:'รายงานวันนี้', color:'#d97706'},
@@ -1557,7 +1555,7 @@ function renderCheck(){
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="addsku">เพิ่ม SKU ใหม่</button> หรือ <button class="text-brand-600 font-semibold underline" data-nav="import">Import Excel</button></td></tr>':
+          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="import">Import Excel</button></td></tr>':
           products.map(p=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
