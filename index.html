@@ -2667,7 +2667,13 @@ function applyCampaignRow(r, text, kind){
   items.filter(x => x.shop).forEach(x => {
     const id = 'vc-' + month + '-' + x.shop.id, cur = DB.campaigns.find(c => c.id === id);
     if(kind === 'D'){ if(cur){ DB.campaigns = DB.campaigns.filter(c => c !== cur); ok.push(x); } else missing.push(x.code); return; }
-    if(kind === 'R'){ if(cur){ cur.done = x.n; cur.updated_at = iso; ok.push(x); } else missing.push(x.code); return; }
+    if(kind === 'R'){
+      if(!cur){ missing.push(x.code); return; }
+      cur.done = x.n; cur.updated_at = iso;
+      // ยังไม่ครบ → ไม่ถือว่า "ทำแล้ว" และไม่ต้องแจ้งเช็คตอน 9 โมง (ถ้ายังไม่ได้แจ้ง)
+      if(x.n < (Number(cur.target) || 0) && cur.done_at && !cur.notified_at) Object.assign(cur, {done_at: null, done_by: null, notify_at: null});
+      ok.push(x); return;
+    }
     if(!(x.n > 0)) return;
     const note = 'สั่งทาง LINE' + (r.sender ? ' โดย ' + r.sender : '') + ' · ' + fmtDate(ymdLocal(at));
     const line = {line_group: r.group, line_user: r.user, line_quote: r.quote, line_sender: r.sender};
