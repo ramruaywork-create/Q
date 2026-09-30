@@ -2920,7 +2920,7 @@ function lineTasksFromRow(r){
   return parts.map((part, i) => {
     const shop = part.shopCode ? DB.shops.find(x => String(x.code).toUpperCase() === part.shopCode.toUpperCase()) : null;
     const first = part.lines[0];
-    const title = first || (r.title && !lineTagsTarget(r.title) ? r.title : '') || ('งานจาก ' + (r.sender || 'LINE') + ' (ดูรูป)');
+    const title = first || ('งานจาก ' + (r.sender || 'LINE') + ' (ดูรูป)'); // แท็กเฉยๆ (มักส่งรูปตาม)
     const t = {id: 'line-' + r.id + (i ? '-' + (i + 1) : ''), title: title.slice(0, 200),
       detail: (r.sender ? r.sender + ': ' : '') + r.message,
       assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : part.shopCode,
@@ -3011,6 +3011,10 @@ async function pollLineLive(){
       DB.meta.lineOnlyTagClean = true; changed = true;
       if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+LINE_ONLY_TAG+' '+(before - DB.tasks.length)+' งาน');
     }
+    // คำสั่ง /VDO/ /RVDO/ /DVDO/ เป็นแคมเปญวิดีโอ ไม่ใช่งาน — ลบงานที่เคยถูกสร้างจากคำสั่งเหล่านี้
+    { const before = DB.tasks.length;
+      DB.tasks = DB.tasks.filter(t => !(t.source === 'line' && CAMP_TAG_RE.test(t.line_text || '')));
+      if(DB.tasks.length !== before) changed = true; }
     // งาน LINE ที่สร้างก่อนมีระบบต่อท้าย: ให้ batch = id ของตัวเอง จะได้รับข้อความต่อท้ายได้
     DB.tasks.forEach(t => { if(t.source === 'line' && !t.line_batch && /^line-\d+$/.test(t.id)){ t.line_batch = t.id; changed = true; } });
     rows.forEach(r => {
