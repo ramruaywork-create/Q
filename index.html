@@ -2574,6 +2574,32 @@ const campState = {month: ''};
 const monthNow = () => todayISO().slice(0, 7);
 function shiftMonth(m, d){ const [y, mo] = m.split('-').map(Number); const t = new Date(y, mo - 1 + d, 1); return t.getFullYear() + '-' + pad2(t.getMonth() + 1); }
 function fmtMonthTH(m){ const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('th-TH', {month: 'long', year: 'numeric'}); }
+/* ปุ่มบุ๊กมาร์ก: กดบนหน้า Seller Centre → ดึงลิงก์ Shopee Video ทุกตัวของร้าน แล้วคัดลอกเป็นตาราง (วางใน Excel ได้)
+   ลิงก์แชร์ = https://sv.shopee.co.th/share-video/<encodePostId> เปิดดูบนคอมได้ */
+function svCopyLinks(){
+  (async () => {
+    if(!/(^|\.)seller\.shopee\./.test(location.host)){ alert('เปิดหน้า Shopee Seller Centre ก่อน แล้วกดปุ่มนี้อีกครั้ง'); return; }
+    let all = [], page = 1, total = 0;
+    try{
+      do{
+        const r = await fetch('https://creator.shopee.co.th/publish/pc/api/video/list?page=' + page + '&pageSize=50&order=ptime&orderBy=desc', {credentials: 'include'});
+        const j = await r.json(); const d = j.data || {}; const list = d.list || [];
+        total = d.total || 0; all = all.concat(list); page++;
+        if(!list.length) break;
+      } while(all.length < total && page < 200);
+    }catch(e){ alert('ดึงลิงก์ไม่ได้: ' + e.message); return; }
+    const txt = 'วันที่โพสต์\tลิงก์วิดีโอ\tสินค้า\tยอดดู\n' + all.map(v => [
+      new Date(v.ptime).toLocaleString('th-TH'),
+      'https://sv.shopee.co.th/share-video/' + encodeURIComponent(v.encodePostId),
+      (v.productList || []).map(x => x.name).join(' | ').replace(/[\t\n]/g, ' '),
+      v.views
+    ].join('\t')).join('\n');
+    try{ await navigator.clipboard.writeText(txt); }
+    catch(e){ const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    alert('คัดลอกลิงก์วิดีโอ ' + all.length + ' รายการแล้ว — วางใน Excel / Google Sheets ได้เลย');
+  })();
+}
+const SV_BOOKMARKLET = 'javascript:(' + svCopyLinks.toString().replace(/\s*\n\s*/g, ' ') + ')()';
 function renderCampaigns(){
   if(!campState.month) campState.month = monthNow();
   const m = campState.month;
@@ -2636,7 +2662,14 @@ function renderCampaigns(){
         </div>
       </div>`;
     }).join('')}</div>` : `<div class="card p-10 text-center text-slate-400">${isAdmin() ? 'ยังไม่มีร้านในแคมเปญเดือนนี้ — เพิ่มร้านด้านบน' : 'เดือนนี้ร้านของคุณยังไม่มีวิดีโอที่ต้องลง'}</div>`}
+    <div class="card p-4 flex flex-col md:flex-row md:items-center gap-3">
+      <a id="svBookmarklet" class="btn btn-soft whitespace-nowrap" draggable="true" title="ลากไปวางที่แถบบุ๊กมาร์ก"><i data-lucide="clipboard-copy" class="w-4 h-4"></i>คัดลอกลิงก์วิดีโอ Shopee</a>
+      <p class="text-xs text-slate-500"><b class="text-slate-600">ดึงลิงก์วิดีโอจาก Seller Centre:</b> ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก (ครั้งเดียว) → เปิด Seller Centre ของร้าน → กดบุ๊กมาร์ก
+        ระบบจะคัดลอกลิงก์ทุกวิดีโอ (วันที่ · ลิงก์ · สินค้า · ยอดดู) ไปวางใน Excel หรือแปะในช่องด้านบน · ลิงก์เปิดดูบนคอมได้ ไม่ต้องใช้แอป</p>
+    </div>
   </div>`;
+  const bm = document.getElementById('svBookmarklet');
+  if(bm){ bm.href = SV_BOOKMARKLET; bm.addEventListener('click', e => { e.preventDefault(); toast('ลากปุ่มนี้ไปวางที่แถบบุ๊กมาร์ก แล้วกดตอนเปิดหน้า Seller Centre', 'info'); }); }
   if(window.lucide) lucide.createIcons();
 }
 function addCampaignLink(shopId){
