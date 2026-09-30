@@ -2938,8 +2938,13 @@ function mergeRemoteProducts(rows){
 }
 document.addEventListener('click', async e => {
   if(!e.target.closest('#rrSync') || !isAdmin()) return;
-  const url = $('#rrUrl').value.trim(), key = $('#rrKey').value.trim(), status = $('#rrStatus'), btn = $('#rrSync');
-  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url)){ toast('Project URL ไม่ถูกต้อง (เช่น https://xxxx.supabase.co)', 'error'); return; }
+  // รับได้ทั้ง https://<ref>.supabase.co, ลิงก์ dashboard (.../project/<ref>/...) หรือรหัสโปรเจกต์อย่างเดียว
+  const rawUrl = $('#rrUrl').value.replace(/[\s​-‍﻿]/g, '');
+  const ref = (rawUrl.match(/\/project\/([a-z0-9]{15,30})/i) || rawUrl.match(/([a-z0-9]{15,30})\.supabase\.co/i) || rawUrl.match(/^([a-z0-9]{15,30})$/i) || [])[1];
+  const key = $('#rrKey').value.trim(), status = $('#rrStatus'), btn = $('#rrSync');
+  if(!ref){ toast('Project URL ไม่ถูกต้อง — วางลิงก์โปรเจกต์ Supabase หรือ https://xxxx.supabase.co', 'error'); return; }
+  const url = 'https://' + ref.toLowerCase() + '.supabase.co';
+  $('#rrUrl').value = url;
   if(!key){ toast('กรุณาใส่ Publishable key', 'error'); return; }
   if(isSecretSupabaseKey(key)){ toast('นี่คือ secret / service_role key — ห้ามใส่ในเว็บ ใช้ Publishable key เท่านั้น', 'error'); $('#rrKey').value = ''; return; }
   btn.disabled = true;
