@@ -773,7 +773,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าจาก Excel / CSV', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -1103,7 +1103,7 @@ function renderDashboard(){
   ];
 
   const quick = [
-    {id:'import', icon:'file-spreadsheet', label:'Import Excel', color:'#0891b2'},
+    {id:'import', icon:'trending-up', label:'นำเข้าไฟล์ขายดี', color:'#0891b2'},
     {id:'check', icon:'scan-search', label:'เช็ก SKU', color:'#2563eb'},
     {id:'report', icon:'clipboard-list', label:'รายงานวันนี้', color:'#d97706'},
     {id:'tiktokjobs', icon:'video', label:'ส่งงาน TikTok', color:'#9333ea'}
@@ -1497,6 +1497,7 @@ function excelCheckCell(p, shopId){
 let chkImportOpen = false;
 function checkImportBox(shop){
   if(!shop) return '';
+  if(importMode !== 'sku'){ importMode = 'sku'; importPreview = null; } // หน้าเช็ก SKU รับแค่ไฟล์รายการ SKU
   return `<div class="border-t px-4 py-4" style="border-color:var(--border); background:#f8fafc;">
       <div class="flex items-center gap-2 mb-3">
         <i data-lucide="file-spreadsheet" class="w-4 h-4 text-cyan-600"></i>
@@ -1504,10 +1505,6 @@ function checkImportBox(shop){
         <span class="text-xs text-slate-400">SKU ในไฟล์จะขึ้น “เช็คแล้ว”</span>
       </div>
       <div class="flex flex-col md:flex-row gap-3">
-        <select id="importModeSelect" class="input md:!w-56">
-          <option value="sku" ${importMode==='sku'?'selected':''}>ไฟล์รายการ SKU / เช็ก SKU</option>
-          <option value="sales" ${importMode==='sales'?'selected':''}>ไฟล์สินค้าขายดี</option>
-        </select>
         <div class="flex-1 border-2 border-dashed border-slate-300 bg-white rounded-xl px-4 py-2.5 flex items-center gap-3 transition hover:border-brand-500" id="dropZone">
           <input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="hidden">
           <i data-lucide="upload-cloud" class="w-6 h-6 text-slate-300 flex-shrink-0"></i>
@@ -1892,21 +1889,16 @@ let importMode = 'sku';
 function renderImport(){
   const visibleShopIds = getAssignedShopIds(currentUser);
   const importShops = DB.shops.filter(s => s.active && (isAdmin() || visibleShopIds.includes(s.id)));
+  if(importMode !== 'sales'){ importMode = 'sales'; importPreview = null; } // หน้านี้รับแค่ไฟล์สินค้าขายดี (ไฟล์ SKU นำเข้าที่หน้าเช็ก SKU)
   if(!importSelectedShopId || !importShops.some(s=>s.id===importSelectedShopId)) {
     importSelectedShopId = importShops[0]?.id || null;
   }
   $('#view').innerHTML = `
   <div class="fade-in max-w-3xl mx-auto space-y-4">
     <div class="card p-6">
-      <h3 class="font-bold text-lg flex items-center gap-2 mb-1"><i data-lucide="file-spreadsheet" class="w-5 h-5 text-cyan-600"></i>นำเข้าจาก Excel / CSV</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <div>
-          <label class="text-xs font-semibold text-slate-500 mb-1 block">ชนิดไฟล์ที่นำเข้า</label>
-          <select id="importModeSelect" class="input">
-            <option value="sku" ${importMode==='sku'?'selected':''}>นำเข้ารายการ SKU / เช็ก SKU</option>
-            <option value="sales" ${importMode==='sales'?'selected':''}>นำเข้าข้อมูลสินค้าขายดี</option>
-          </select>
-        </div>
+      <h3 class="font-bold text-lg flex items-center gap-2 mb-1"><i data-lucide="trending-up" class="w-5 h-5 text-cyan-600"></i>นำเข้าไฟล์สินค้าขายดี</h3>
+      <p class="text-xs text-slate-400 mb-4">ไฟล์รายการ SKU นำเข้าได้ที่หน้า <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">เช็ก SKU</button></p>
+      <div class="grid grid-cols-1 gap-3 mb-4">
         <div>
           <label class="text-xs font-semibold text-slate-500 mb-1 block">ร้านที่ต้องการนำเข้า</label>
           <select id="importShopSelect" class="input">
