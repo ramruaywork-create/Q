@@ -97,6 +97,9 @@ tailwind.config = {
   @media(max-width:768px){ .sidebar{ position:fixed; left:-260px; top:0; bottom:0; z-index:50; transition:left .25s; } .sidebar.open{ left:0; } }
   .fade-in{ animation:fadeIn .25s ease; }
   .badge-num{ font-variant-numeric:tabular-nums; }
+  .task-img{ width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; cursor:zoom-in; padding:0; }
+  .task-img img{ width:100%; height:100%; object-fit:cover; }
+  .task-img-gone{ cursor:default; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -2815,6 +2818,7 @@ function renderTaskList(){
       <div class="flex-1 min-w-0">
         <div class="font-semibold break-words ${t.status==='done'?'line-through text-slate-400':''}">${esc(t.title)}</div>
         ${t.detail ? `<div class="text-sm text-slate-500 whitespace-pre-wrap break-words mt-0.5">${esc(t.detail)}</div>` : ''}
+        ${taskImagesHtml(t)}
         <div class="flex flex-wrap gap-1.5 mt-2">
           ${t.source === 'line' ? `<span class="pill" style="background:#06c755;color:#fff" title="${esc(t.line_text||'')}">LINE</span>` : ''}
           ${t.person ? `<span class="pill pill-tiktok" title="ชื่อที่ถูกแท็ก">@${esc(t.person)}</span>` : ''}
@@ -2916,7 +2920,8 @@ function lineTasksFromRow(r){
   return parts.map((part, i) => {
     const shop = part.shopCode ? DB.shops.find(x => String(x.code).toUpperCase() === part.shopCode.toUpperCase()) : null;
     const first = part.lines[0];
-    const t = {id: 'line-' + r.id + (i ? '-' + (i + 1) : ''), title: (first || r.title || r.message).slice(0, 200),
+    const title = first || (r.title && !lineTagsTarget(r.title) ? r.title : '') || ('งานจาก ' + (r.sender || 'LINE') + ' (ดูรูป)');
+    const t = {id: 'line-' + r.id + (i ? '-' + (i + 1) : ''), title: title.slice(0, 200),
       detail: (r.sender ? r.sender + ': ' : '') + r.message,
       assignee_id: user ? user.id : null, person: user ? '' : person, shop_id: shop ? shop.id : null, shop_code: shop ? '' : part.shopCode,
       due: lineDue(r.due), priority: 2, source: 'line', line_text: r.message, line_batch: 'line-' + r.id,
@@ -2935,6 +2940,53 @@ function recentLineTasks(r){
   const batch = own.reduce((a, b) => Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a).line_batch;
   return DB.tasks.filter(t => t.line_batch === batch);
 }
+function lineImageTarget(r){
+  const ts = Number(r.id);
+  const cands = DB.tasks.filter(t => t.source === 'line' && t.line_group === r.group && t.line_user === r.user && t.line_batch && Math.abs(Date.parse(t.created_at) - ts) <= LINE_FOLLOW_MS);
+  if(!cands.length) return null;
+  const before = cands.filter(t => Date.parse(t.created_at) <= ts);
+  const pool = before.length ? before : cands; // รูปตามหลังข้อความ ก่อน · ไม่มีค่อยดูข้อความที่ตามมา
+  const near = pool.reduce((a, b) => Math.abs(Date.parse(b.created_at) - ts) < Math.abs(Date.parse(a.created_at) - ts) ? b : a);
+  const batch = DB.tasks.filter(t => t.line_batch === near.line_batch);
+  return batch[batch.length - 1];
+}
+/* ดึงรูปจาก LINE มาเก็บใน Supabase (ครั้งเดียวต่อรูป) แล้วจำลิงก์ไว้ในงาน */
+const imgLoading = new Set();
+async function loadTaskImages(){
+  if(!apiMode) return;
+  const todo = [];
+  visibleTasks().forEach(t => (t.images || []).forEach(im => { if(!im.url && !im.gone && !imgLoading.has(im.id)) todo.push([t, im]); }));
+  let changed = false;
+  for(const [t, im] of todo.slice(0, 6)){
+    imgLoading.add(im.id);
+    try{
+      const {j} = await api('line_image', {id: im.id});
+      if(j.ok && j.url){ im.url = j.url; changed = true; }
+      else if(j.gone){ im.gone = true; changed = true; }
+      if(changed) t.updated_at = nowISO();
+    }catch(e){}
+    finally{ imgLoading.delete(im.id); }
+  }
+  if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderCurrentViewQuiet(); }
+}
+function taskImagesHtml(t){
+  const imgs = t.images || [];
+  if(!imgs.length) return '';
+  return `<div class="flex flex-wrap gap-2 mt-2">${imgs.map(im => im.url
+    ? `<button type="button" class="task-img" data-img-view="${esc(im.url)}" title="ดูรูปใหญ่"><img src="${esc(im.url)}" alt="รูปจาก LINE" loading="lazy" onerror="this.parentNode.classList.add('task-img-gone');this.remove()"></button>`
+    : `<span class="task-img task-img-gone" title="${im.gone ? 'รูปหมดอายุแล้ว' : 'กำลังโหลดรูป…'}"><i data-lucide="${im.gone ? 'image-off' : 'image'}" class="w-5 h-5"></i></span>`).join('')}</div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-img-view]');
+  if(!b) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.style.cursor = 'zoom-out';
+  modal.innerHTML = `<img src="${esc(b.dataset.imgView)}" alt="รูปจาก LINE" style="max-width:94vw;max-height:90vh;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.4)">`;
+  modal.addEventListener('click', () => modal.remove());
+  document.addEventListener('keydown', function esc_(ev){ if(ev.key === 'Escape'){ modal.remove(); document.removeEventListener('keydown', esc_); } });
+  document.body.appendChild(modal);
+});
 function setLineLive(ok, msg){
   lineLive.ok = ok; lineLive.msg = msg;
   const dot = document.getElementById('lineLiveDot'), tm = document.getElementById('lineLiveTime');
@@ -2967,6 +3019,7 @@ async function pollLineLive(){
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
+      if(r.type === 'IMAGE') continue;
       if(r.type !== 'DONE' && lineTagsTarget(r.message) && CAMP_TAG_RE.test(r.message)){
         const res = applyCampaignRow(r, r.message, campKindOf(r.message));
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
@@ -2998,7 +3051,7 @@ async function pollLineLive(){
     /* ข้อความต่อท้ายที่ไม่ได้แท็กใคร จากคนเดิม ภายใน 3 นาที → ต่อเป็นรายละเอียดของงานล่าสุด
        ดูทุกแถว (ไม่ใช่แค่แถวใหม่) เพราะเบราว์เซอร์ที่ยังเปิดหน้าเก่าอาจอ่านแถวไปก่อน — แต่ละข้อความต่อได้ครั้งเดียว (line_extra_ids) */
     for(const r of rows){
-      if(r.type === 'DONE' || !r.message || r.message.includes('@') || vdoParentOf(r, rows)) continue;
+      if(r.type === 'DONE' || r.type === 'IMAGE' || !r.message || r.message.includes('@') || vdoParentOf(r, rows)) continue;
       const recent = recentLineTasks(r);
       if(!recent.length) continue;
       const batchTs = Date.parse(recent[0].created_at);
@@ -3013,8 +3066,20 @@ async function pollLineLive(){
         changed = true;
       }
     }
+    /* รูปจากกลุ่ม (แถว IMAGE: message = LINE message id) → แนบกับงานของคนเดิมในกลุ่มเดิม ห่างไม่เกิน 3 นาที
+       ส่งรูปก่อนหรือหลังข้อความแท็กก็ได้ · ดูทุกแถว เพราะงานอาจถูกสร้างทีหลังรูป · แต่ละรูปแนบได้ครั้งเดียว */
+    for(const r of rows){
+      if(r.type !== 'IMAGE' || !/^\d+$/.test(r.message) || DB.tasks.some(t => (t.images || []).some(im => im.id === r.message))) continue;
+      const target = lineImageTarget(r);
+      if(!target) continue;
+      target.images = [...(target.images || []), {id: r.message, at: new Date(Number(r.id)).toISOString()}];
+      const at = new Date(Number(r.id)).toISOString();
+      if(String(target.updated_at || '') < at) target.updated_at = at;
+      changed = true;
+    }
     if(rows.length){ const maxTs = Math.max(last, ...rows.map(r => Number(r.id) || 0)); if(maxTs !== last){ DB.meta.lineLastTs = maxTs; changed = true; } }
     if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderCurrentViewQuiet(); }
+    loadTaskImages();
     setLineLive(true, 'อัปเดต ' + new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
   }catch(e){
     setLineLive(false, 'เชื่อมต่อชีตงาน LINE ไม่ได้ (ชีตแชร์แบบ “ทุกคนที่มีลิงก์ดูได้” หรือยัง?)');

@@ -98,6 +98,28 @@ async function sessionUserId(req: Request): Promise<string | null> {
   return rows[0]?.user_id ?? null;
 }
 const activeUser = (db: Obj, id: string | null) => (id ? db.users.find((u: Obj) => u.id === id && u.active) : null) || null;
+/* รูปจาก LINE เก็บใน Storage (public bucket) — ลบอัตโนมัติเมื่อเก่ากว่า 60 วัน ยกเว้นรูปของงานที่ยังไม่เสร็จ หรือเพิ่งเสร็จไม่ถึง 60 วัน */
+const IMG_BUCKET = "line-images";
+const IMG_KEEP_DAYS = 60;
+const imgUrl = (name: string) => `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${IMG_BUCKET}/${name}`;
+const storageAuth = () => { const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""; return { Authorization: "Bearer " + k, apikey: k }; };
+async function cleanupImages(): Promise<number> {
+  const cutoff = Date.now() - IMG_KEEP_DAYS * 86400000;
+  const keep = await withDb((db) => {
+    const s = new Set<string>();
+    for (const t of db.tasks) for (const img of (Array.isArray(t.images) ? t.images : []))
+      if (t.status !== "done" || !t.done_at || Date.parse(t.done_at) > cutoff) s.add(String(img.id));
+    return s;
+  });
+  const old = await sql`select name from storage.objects where bucket_id = ${IMG_BUCKET} and created_at < now() - make_interval(days => ${IMG_KEEP_DAYS})`;
+  const del = old.map((o) => String(o.name)).filter((n) => !keep.has(n.split("-")[0]));
+  if (!del.length) return 0;
+  const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/${IMG_BUCKET}`, {
+    method: "DELETE", headers: { ...storageAuth(), "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: del }),
+  });
+  if (!r.ok) throw new Error("storage delete " + r.status + " " + await r.text());
+  return del.length;
+}
 async function readJson(req: Request): Promise<Obj> { try { const j = await req.json(); return j && typeof j === "object" ? j : {}; } catch { return {}; } }
 
 Deno.serve(async (req) => {
@@ -169,7 +191,8 @@ Deno.serve(async (req) => {
         console.error("LINE push failed", r.status, await r.text());
         await withDb((db) => { const c = db.campaigns.find((x: Obj) => x.id === d.id); if (c) { delete c.notified_at; c.updated_at = nowIso(); } }, true);
       }
-      return respond({ ok: true, due: due.length, sent });
+      const cleaned = await cleanupImages().catch((e) => { console.error("image cleanup", e); return -1; });
+      return respond({ ok: true, due: due.length, sent, cleaned });
     }
 
     const uid = await sessionUserId(req);
@@ -283,6 +306,32 @@ Deno.serve(async (req) => {
         return respond({ ok: false, error: "ส่งข้อความ LINE ไม่สำเร็จ (" + r.status + ")" });
       }
       return respond({ ok: true, sent: true });
+    }
+
+    /* รูปจากกลุ่ม LINE (ชีตมีแค่ message id) → ดึงรูปจาก LINE มาเก็บใน Storage bucket line-images แล้วคืนลิงก์
+       ชื่อไฟล์มีเลขสุ่มต่อท้าย เดาลิงก์จาก message id ไม่ได้ */
+    if (action === "line_image") {
+      if (req.method !== "POST") return respond({ ok: false }, 405);
+      const id = String((await readJson(req)).id ?? "");
+      if (!/^\d{5,25}$/.test(id)) return respond({ ok: false, error: "bad id" });
+      const me = await withDb((db) => activeUser(db, uid));
+      if (!me) return respond({ ok: false, error: "unauthorized" }, 401);
+      const found = await sql`select name from storage.objects where bucket_id = ${IMG_BUCKET} and name like ${id + "-%"} limit 1`;
+      if (found[0]) return respond({ ok: true, url: imgUrl(found[0].name) });
+      const lineToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
+      if (!lineToken) return respond({ ok: false, error: "no LINE token" });
+      const r = await fetch(`https://api-data.line.me/v2/bot/message/${id}/content`, { headers: { Authorization: "Bearer " + lineToken } });
+      if (r.status === 202) return respond({ ok: false, pending: true }); // LINE ยังเตรียมไฟล์ไม่เสร็จ
+      if (!r.ok) return respond({ ok: false, gone: r.status === 404 || r.status === 410, error: "LINE " + r.status });
+      const type = (r.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+      const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" } as Record<string, string>)[type];
+      if (!ext) return respond({ ok: false, gone: true, error: "not image" });
+      const name = `${id}-${randomToken().slice(0, 16)}.${ext}`;
+      const up = await fetch(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/${IMG_BUCKET}/${name}`, {
+        method: "POST", headers: { ...storageAuth(), "Content-Type": type }, body: new Uint8Array(await r.arrayBuffer()),
+      });
+      if (!up.ok) { console.error("storage upload failed", up.status, await up.text()); return respond({ ok: false, error: "upload " + up.status }); }
+      return respond({ ok: true, url: imgUrl(name) });
     }
 
     /* ย้ายข้อมูลจากโหมดเครื่องเดียว (localStorage ของ Admin) ขึ้นเซิร์ฟเวอร์ — ทำได้ครั้งเดียว */
