@@ -2636,29 +2636,41 @@ function renderCampaigns(){
       </div>`;
     }).join('')}</div>`
     : `<div class="card p-10 text-center text-slate-400">ยังไม่มีแคมเปญวิดีโอเดือนนี้</div>`}
-    <div class="card p-4 text-sm text-slate-500">
-      <p class="font-semibold text-slate-600 mb-2 flex items-center gap-2"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>สั่งจากกลุ่ม LINE (บรรทัดละร้าน)</p>
+    ${(() => { const lc = lineCmds(); return `<div class="card p-4 text-sm text-slate-500">
+      <p class="font-semibold text-slate-600 mb-2 flex items-center gap-2"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>สั่งจากกลุ่ม LINE (บรรทัดละร้าน)${isAdmin() ? ' <span class="font-normal text-xs text-slate-400">· แก้คำสั่งได้ที่ Settings</span>' : ''}</p>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <div><p class="text-xs mb-1"><b>ตั้งจำนวน</b> (ส่งใหม่ = แก้)</p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /VDO/
+        <div><p class="text-xs mb-1"><b>ตั้งจำนวน</b> (ส่งใหม่ = แก้)</p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@${esc(lc.tag)} /${esc(lc.vdo)}/
 alp 32
 dp 26</pre></div>
-        <div><p class="text-xs mb-1"><b>ลงไปแล้วกี่ตัว</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /RVDO/
+        <div><p class="text-xs mb-1"><b>ลงไปแล้วกี่ตัว</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@${esc(lc.tag)} /${esc(lc.rvdo)}/
 alp 6</pre></div>
-        <div><p class="text-xs mb-1"><b>ลบร้านออก</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@Sofia Alvarez /DVDO/
+        <div><p class="text-xs mb-1"><b>ลบร้านออก</b></p><pre class="font-mono text-xs bg-slate-50 p-3 rounded-lg">@${esc(lc.tag)} /${esc(lc.dvdo)}/
 alp</pre></div>
       </div>
-      <p class="text-xs mt-2">กด <b>ทำแล้ว</b> → 09:00 น. วันถัดไป บอทจะ Reply ข้อความ /VDO/ ในกลุ่มว่า “ลงครบแล้ว เช็คหน่อย”</p>
-    </div>
+      <p class="text-xs mt-2">กด <b>ทำแล้ว</b> → 09:00 น. วันถัดไป บอทจะ Reply ข้อความ /${esc(lc.vdo)}/ ในกลุ่มว่า “ลงครบแล้ว เช็คหน่อย”</p>
+    </div>`; })()}
   </div>`;
   if(window.lucide) lucide.createIcons();
   renderNav();
 }
 /* ข้อความ LINE แคมเปญ: /VDO/ ตั้งจำนวน · /RVDO/ ลงไปแล้ว · /DVDO/ ลบ  (คืนค่า [{code, n, shop}] ) */
-const CAMP_TAG_RE = /\/(R|D)?VDO\//i;
-const campKindOf = msg => { const m = String(msg || '').match(CAMP_TAG_RE); return m ? (m[1] ? m[1].toUpperCase() : 'V') : null; };
+/* คำสั่ง LINE ตั้งเองได้ที่ Settings (เก็บใน DB.meta.line_cmds) */
+const LINE_CMD_DEFAULT = {tag:'Sofia Alvarez', vdo:'VDO', rvdo:'RVDO', dvdo:'DVDO'};
+function lineCmds(){
+  const c = (typeof DB !== 'undefined' && DB && DB.meta && DB.meta.line_cmds) || {}, o = {};
+  Object.keys(LINE_CMD_DEFAULT).forEach(k => { o[k] = String(c[k] || '').trim() || LINE_CMD_DEFAULT[k]; });
+  return o;
+}
+const reEsc = x => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function campTagRe(flags){ const c = lineCmds(); return new RegExp('/(' + [c.rvdo, c.dvdo, c.vdo].map(reEsc).join('|') + ')/', flags || 'i'); }
+const campKindOf = msg => {
+  const m = String(msg || '').match(campTagRe()); if(!m) return null;
+  const c = lineCmds(), w = m[1].toLowerCase();
+  return w === c.rvdo.toLowerCase() ? 'R' : w === c.dvdo.toLowerCase() ? 'D' : 'V';
+};
 function parseCampaignLines(text, kind){
   const out = [];
-  String(text || '').replace(/@\S+(\s+\S+)?\s*/, ' ').replace(new RegExp(CAMP_TAG_RE.source, 'ig'), ' ').split(/\r?\n|,/).forEach(line => {
+  String(text || '').replace(new RegExp('@' + reEsc(lineCmds().tag), 'ig'), ' ').replace(campTagRe('ig'), ' ').split(/\r?\n|,/).forEach(line => {
     const t = line.trim(); if(!t) return;
     const m = kind === 'D' ? t.match(/^([A-Za-z0-9]+)$/) : t.match(/^([A-Za-z0-9]+)\s*[:=\-]?\s*(\d+)\s*(วิดีโอ|คลิป|vdo|video)?$/i);
     if(!m) return;
@@ -2702,7 +2714,7 @@ function campaignToast(res){
 /* ข้อความที่ส่งต่อท้าย /VDO/ /RVDO/ /DVDO/ (ไม่มี @) ภายใน 3 นาที จากคนเดิม → ยังเป็นคำสั่งแคมเปญเดิม */
 function vdoParentOf(r, rows){
   const ts = Number(r.id);
-  const cands = rows.filter(x => x.group === r.group && x.user === r.user && Number(x.id) < ts && ts - Number(x.id) <= LINE_FOLLOW_MS && lineTagsTarget(x.message) && CAMP_TAG_RE.test(x.message));
+  const cands = rows.filter(x => x.group === r.group && x.user === r.user && Number(x.id) < ts && ts - Number(x.id) <= LINE_FOLLOW_MS && lineTagsTarget(x.message) && campTagRe().test(x.message));
   if(!cands.length) return null;
   const parent = cands[cands.length - 1];
   const tagBetween = rows.some(x => x.group === r.group && Number(x.id) > Number(parent.id) && Number(x.id) < ts && x.message.includes('@'));
@@ -2862,8 +2874,7 @@ const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_
 const LINE_LIVE_SHEET_ID = '1a9i7Q-liFcLHIhu6VXdynHy2yrrs1YpUGxXxKx7pnyE';
 const LINE_LIVE_SHEET = 'Untitled';
 const LINE_POLL_MS = 30000;
-const LINE_ONLY_TAG = 'Sofia Alvarez';  // รับเฉพาะข้อความที่แท็กคนนี้
-const lineTagsTarget = msg => String(msg || '').toLowerCase().includes('@' + LINE_ONLY_TAG.toLowerCase());
+const lineTagsTarget = msg => String(msg || '').toLowerCase().includes('@' + lineCmds().tag.toLowerCase()); // รับเฉพาะข้อความที่แท็กบอท
 const lineLive = {ok:null, msg:'กำลังเชื่อมต่อ…', timer:null, busy:false};
 let gvizSeq = 0;
 function gviz(sheetId, sheet){ // JSONP — Google Sheet ไม่เปิด CORS ให้ fetch ตรงๆ
@@ -2900,7 +2911,7 @@ const lineSameText = (a, b) => String(a || '').replace(/\s+/g, ' ').trim().toLow
    - ถ้ามีหลายบรรทัดที่ขึ้นต้นด้วย /ร้าน/ → แยกเป็นงานละบรรทัด (บรรทัดที่ไม่มีร้านต่อท้ายงานก่อนหน้า)
    ทุกงานเก็บ quoteToken ของข้อความเดียวกัน → ตอนเสร็จบอท Reply ข้อความ @ นั้น */
 function lineTasksFromRow(r){
-  const person = LINE_ONLY_TAG;
+  const person = lineCmds().tag;
   let text = r.message;
   const at = text.toLowerCase().indexOf('@' + person.toLowerCase());
   if(at >= 0) text = text.slice(0, at) + ' ' + text.slice(at + person.length + 1);
@@ -3009,11 +3020,11 @@ async function pollLineLive(){
       const before = DB.tasks.length;
       DB.tasks = DB.tasks.filter(t => t.source !== 'line' || lineTagsTarget(t.line_text));
       DB.meta.lineOnlyTagClean = true; changed = true;
-      if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+LINE_ONLY_TAG+' '+(before - DB.tasks.length)+' งาน');
+      if(DB.tasks.length !== before) logHistory('task_line_cleanup', 'ลบงาน LINE ที่ไม่ได้แท็ก @'+lineCmds().tag+' '+(before - DB.tasks.length)+' งาน');
     }
     // คำสั่ง /VDO/ /RVDO/ /DVDO/ เป็นแคมเปญวิดีโอ ไม่ใช่งาน — ลบงานที่เคยถูกสร้างจากคำสั่งเหล่านี้
     { const before = DB.tasks.length;
-      DB.tasks = DB.tasks.filter(t => !(t.source === 'line' && CAMP_TAG_RE.test(t.line_text || '')));
+      DB.tasks = DB.tasks.filter(t => !(t.source === 'line' && campTagRe().test(t.line_text || '')));
       if(DB.tasks.length !== before) changed = true; }
     // งาน LINE ที่สร้างก่อนมีระบบต่อท้าย: ให้ batch = id ของตัวเอง จะได้รับข้อความต่อท้ายได้
     DB.tasks.forEach(t => { if(t.source === 'line' && !t.line_batch && /^line-\d+$/.test(t.id)){ t.line_batch = t.id; changed = true; } });
@@ -3025,7 +3036,7 @@ async function pollLineLive(){
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
       if(r.type === 'IMAGE') continue;
-      if(r.type !== 'DONE' && lineTagsTarget(r.message) && CAMP_TAG_RE.test(r.message)){
+      if(r.type !== 'DONE' && lineTagsTarget(r.message) && campTagRe().test(r.message)){
         const res = applyCampaignRow(r, r.message, campKindOf(r.message));
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
@@ -3292,6 +3303,26 @@ document.addEventListener('click', async e => {
 });
 
 /* ---------- Settings ---------- */
+document.addEventListener('click', e => {
+  const b = e.target.closest('#lcSave,#lcReset');
+  if(!b || !isAdmin()) return;
+  DB.meta = DB.meta || {};
+  if(b.id === 'lcReset'){
+    if(!confirm('คืนคำสั่ง LINE เป็นค่าเริ่มต้น?')) return;
+    delete DB.meta.line_cmds;
+  }else{
+    const clean = v => String(v || '').trim().replace(/^[@\/]+|\/+$/g, '').trim();
+    const c = {tag: clean($('#lcTag').value), vdo: clean($('#lcVdo').value), rvdo: clean($('#lcRvdo').value), dvdo: clean($('#lcDvdo').value)};
+    const words = [c.vdo || LINE_CMD_DEFAULT.vdo, c.rvdo || LINE_CMD_DEFAULT.rvdo, c.dvdo || LINE_CMD_DEFAULT.dvdo].map(x => x.toLowerCase());
+    if(new Set(words).size < 3){ toast('คำสั่งแคมเปญ 3 ช่องต้องไม่ซ้ำกัน', 'error'); return; }
+    if([c.vdo, c.rvdo, c.dvdo].some(x => /[\s\/]/.test(x))){ toast('คำสั่งห้ามมีช่องว่างหรือ /', 'error'); return; }
+    if(DB.shops.some(sh => words.includes(String(sh.code).toLowerCase()))){ toast('คำสั่งซ้ำกับรหัสร้าน — ใช้คำอื่น', 'error'); return; }
+    DB.meta.line_cmds = c;
+  }
+  const lc = lineCmds();
+  logHistory('line_cmds', '@' + lc.tag + ' · /' + lc.vdo + '/ /' + lc.rvdo + '/ /' + lc.dvdo + '/');
+  saveDB(); toast('บันทึกคำสั่ง LINE แล้ว'); renderSettings();
+});
 function renderSettings(){
   $('#view').innerHTML = `
   <div class="fade-in max-w-2xl mx-auto space-y-4">
@@ -3311,6 +3342,21 @@ function renderSettings(){
         <label class="btn btn-ghost cursor-pointer"><i data-lucide="upload" class="w-4 h-4"></i>Import สำรอง<input type="file" id="impBackup" accept=".json" class="hidden"></label>
       </div>
     </div>
+    ${(() => { const lc = lineCmds(); const f = (id, k, label, hint) => `<label class="block text-sm text-slate-600">${label}
+          <div class="flex items-center mt-1"><span class="text-slate-400 font-mono mr-1">${k === 'tag' ? '@' : '/'}</span><input id="${id}" class="input font-mono" maxlength="40" value="${esc(lc[k])}" placeholder="${esc(LINE_CMD_DEFAULT[k])}">${k === 'tag' ? '' : '<span class="text-slate-400 font-mono ml-1">/</span>'}</div>
+          <span class="text-xs text-slate-400">${hint}</span></label>`;
+      return `<div class="card p-5">
+      <h3 class="font-bold text-lg mb-1 flex items-center gap-2"><i data-lucide="message-circle" class="w-5 h-5" style="color:#06c755"></i>คำสั่ง LINE</h3>
+      <p class="text-xs text-slate-500 mb-3">คำที่ใช้สั่งงานในกลุ่ม LINE · ตัวพิมพ์เล็ก/ใหญ่ถือว่าเหมือนกัน · ปล่อยว่าง = ใช้ค่าเริ่มต้น</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        ${f('lcTag', 'tag', 'ชื่อบอทที่ต้องแท็ก', 'ต้องตรงกับชื่อบอทในกลุ่ม LINE')}
+        ${f('lcVdo', 'vdo', 'แคมเปญวิดีโอ: ตั้งจำนวน', 'เช่น /' + esc(lc.vdo) + '/ alp 32')}
+        ${f('lcRvdo', 'rvdo', 'แคมเปญวิดีโอ: ลงไปแล้วกี่ตัว', 'เช่น /' + esc(lc.rvdo) + '/ alp 6')}
+        ${f('lcDvdo', 'dvdo', 'แคมเปญวิดีโอ: ลบร้าน', 'เช่น /' + esc(lc.dvdo) + '/ alp')}
+      </div>
+      <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mt-3">ถ้าเปลี่ยนชื่อบอท ต้องแก้ตัวกรอง “@${esc(lc.tag)}” ใน Make ให้ตรงด้วย ไม่งั้นข้อความที่แท็กเฉยๆ จะไม่ถูกบันทึก</p>
+      <div class="flex items-center gap-2 mt-3"><button id="lcSave" class="btn btn-primary"><i data-lucide="save" class="w-4 h-4"></i>บันทึกคำสั่ง</button><button id="lcReset" class="btn btn-ghost">คืนค่าเริ่มต้น</button></div>
+    </div>`; })()}
     <div class="card p-5">
       <h3 class="font-bold text-lg mb-1 flex items-center gap-2"><i data-lucide="cloud-download" class="w-5 h-5 text-brand-600"></i>ดึงสินค้าจาก Supabase</h3>
       <p class="text-xs text-slate-500 mb-3">อ่านตาราง <span class="font-mono">products</span> (คอลัมน์ sku_merchant, brand) ตัดสี/ไซส์ออก แล้วเพิ่มเป็น SKU ที่ยังไม่มี · SKU เดิมและงานที่ทำไว้ไม่ถูกลบ
