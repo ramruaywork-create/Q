@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="tc-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#tc-bg)"/>
+  <!-- clipboard = ติดตามงาน, check = เช็คงาน -->
+  <rect x="16" y="14" width="32" height="39" rx="6" fill="none" stroke="#fff" stroke-width="4"/>
+  <rect x="24" y="9" width="16" height="9" rx="3.5" fill="#fff"/>
+  <path d="M23 34.5l6.5 6.5L42 28" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
