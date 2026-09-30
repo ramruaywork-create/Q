@@ -1576,8 +1576,7 @@ function renderCheck(){
               <td>
                 ${st==='done'
                   ? `<span class="pill pill-done"><i data-lucide="check" class="w-3.5 h-3.5"></i>เสร็จ</span> <button class="btn btn-ghost btn-sm ml-1 text-xs" data-undo="${p.id}">ยกเลิก</button>`
-                  : `<button class="btn btn-primary btn-sm" data-mark-done="${p.id}"><i data-lucide="check" class="w-3.5 h-3.5"></i>ทำแล้ว</button>
-                     ${st!=='progress'?`<button class="btn btn-ghost btn-sm ml-1" data-mark-progress="${p.id}" title="กำลังทำ"><i data-lucide="loader" class="w-3.5 h-3.5"></i></button>`:''}`
+                  : `${st!=='progress'?`<button class="btn btn-ghost btn-sm" data-mark-progress="${p.id}" title="กำลังทำ"><i data-lucide="loader" class="w-3.5 h-3.5"></i></button>`:''}`
                 }
               </td>
             </tr>`;
