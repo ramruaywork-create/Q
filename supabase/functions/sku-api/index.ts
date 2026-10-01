@@ -335,6 +335,27 @@ Deno.serve(async (req) => {
       return respond({ ok: true, url: imgUrl(name) });
     }
 
+    /* อัปโหลดรูปเองจากหน้าคลังรูป (base64) → Storage bucket line-images · คืน id + ลิงก์ */
+    if (action === "upload_image") {
+      if (req.method !== "POST") return respond({ ok: false }, 405);
+      const inp = await readJson(req);
+      const type = String(inp.type ?? "");
+      const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[type];
+      if (!ext) return respond({ ok: false, error: "รองรับเฉพาะ JPG / PNG / WEBP" });
+      let bytes: Uint8Array;
+      try { bytes = Uint8Array.from(atob(String(inp.data ?? "")), (c) => c.charCodeAt(0)); } catch { return respond({ ok: false, error: "ไฟล์เสีย" }); }
+      if (!bytes.length || bytes.length > 8 * 1024 * 1024) return respond({ ok: false, error: "ไฟล์ต้องไม่เกิน 8 MB" });
+      const me = await withDb((db) => activeUser(db, uid));
+      if (!me) return respond({ ok: false, error: "unauthorized" }, 401);
+      const id = "u" + Date.now().toString(36) + randomToken().slice(0, 6);
+      const name = `${id}-${randomToken().slice(0, 16)}.${ext}`;
+      const up = await fetch(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/${IMG_BUCKET}/${name}`, {
+        method: "POST", headers: { ...storageAuth(), "Content-Type": type }, body: bytes,
+      });
+      if (!up.ok) { console.error("storage upload failed", up.status, await up.text()); return respond({ ok: false, error: "upload " + up.status }); }
+      return respond({ ok: true, id, url: imgUrl(name) });
+    }
+
     /* ย้ายข้อมูลจากโหมดเครื่องเดียว (localStorage ของ Admin) ขึ้นเซิร์ฟเวอร์ — ทำได้ครั้งเดียว */
     if (action === "import_local") {
       if (req.method !== "POST") return respond({ ok: false }, 405);

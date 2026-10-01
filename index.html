@@ -3015,9 +3015,95 @@ async function loadTaskImages(){
 const galState = {q:'', cat:'', period:'all'};
 function galleryItems(){
   const out = [];
-  visibleTasks().forEach(t => (t.images || []).forEach(im => out.push({t, im, at: im.at || t.created_at, cat: taskShopLabel(t) || '-'})));
-  (DB.albums || []).forEach(a => (a.images || []).forEach(im => out.push({a, im, at: im.at || a.created_at, cat: a.category || '-'})));
+  visibleTasks().forEach(t => (t.images || []).forEach(im => out.push({t, im, at: im.at || t.created_at, cat: im.cat || taskShopLabel(t) || '-'})));
+  (DB.albums || []).forEach(a => (a.images || []).forEach(im => out.push({a, im, at: im.at || a.created_at, cat: im.cat || a.category || '-'})));
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+/* แก้ไข/ลบรูปในคลังรูป: Admin ทุกรูป · คนอัปโหลดแก้รูปของตัวเองได้ */
+const galCanEdit = (t, im) => isAdmin() || (!t && im && im.by && currentUser && im.by === currentUser.id);
+const galCats = () => [...new Set(galleryItems().map(x => x.cat).filter(c => c && c !== '-'))].sort();
+function galModal(html){
+  const m = document.createElement('div');
+  m.className = 'modal-bg';
+  m.innerHTML = `<div class="card w-full max-w-md p-5 fade-in">${html}</div><datalist id="galCatList">${galCats().map(c => `<option value="${esc(c)}">`).join('')}</datalist>`;
+  m.addEventListener('click', e => { if(e.target === m || e.target.closest('[data-gal-close]')) m.remove(); });
+  document.body.appendChild(m);
+  if(window.lucide) lucide.createIcons();
+  return m;
+}
+function openGalleryEdit(owner, im, isTask){
+  const cur = im.cat ? (im.cat === '-' ? '' : im.cat) : (isTask ? (taskShopLabel(owner) || '') : (owner.category || ''));
+  const m = galModal(`
+    <h3 class="text-lg font-bold mb-4">แก้ไขรูป</h3>
+    ${im.url ? `<img src="${esc(im.url)}" alt="" class="w-full h-48 object-cover rounded-lg mb-3 bg-slate-100">` : ''}
+    <div class="space-y-3">
+      <label class="block text-sm text-slate-600">หมวด<input id="geCat" class="input mt-1" list="galCatList" maxlength="40" value="${esc(cur)}" placeholder="เว้นว่าง = ไม่ระบุหมวด"></label>
+      <label class="block text-sm text-slate-600">คำอธิบาย<input id="geNote" class="input mt-1" maxlength="120" value="${esc(im.note || '')}" placeholder="เช่น ปกสินค้า 001478"></label>
+    </div>
+    <div class="flex justify-end gap-2 mt-5"><button class="btn btn-ghost" data-gal-close>ยกเลิก</button><button class="btn btn-primary" id="geSave">บันทึก</button></div>`);
+  const oid = owner.id, mid = im.id;
+  m.querySelector('#geSave').addEventListener('click', () => {
+    // หาใหม่จากข้อมูลล่าสุด (ระหว่างเปิดหน้าต่าง ข้อมูลอาจถูกซิงค์ใหม่)
+    owner = (isTask ? DB.tasks : (DB.albums || [])).find(x => x.id === oid);
+    im = owner && (owner.images || []).find(x => x.id === mid);
+    if(!im){ m.remove(); toast('ไม่พบรูปนี้แล้ว', 'error'); renderGallery(); return; }
+    const cat = m.querySelector('#geCat').value.trim(), note = m.querySelector('#geNote').value.trim();
+    const base = isTask ? (taskShopLabel(owner) || '') : (owner.category || '');
+    if(cat && cat !== base) im.cat = cat; else if(cat === base) delete im.cat; else im.cat = '-';
+    if(note) im.note = note; else delete im.note;
+    owner.updated_at = nowISO();
+    saveDB(); m.remove(); toast('บันทึกแล้ว'); renderGallery();
+  });
+}
+/* ย่อรูปก่อนอัป (ด้านยาวสุด 1600px, JPEG) — ประหยัดพื้นที่ */
+function shrinkImage(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('อ่านรูปไม่ได้')); };
+    img.src = url;
+  });
+}
+function openGalleryUpload(){
+  const m = galModal(`
+    <h3 class="text-lg font-bold mb-4">เพิ่มรูป</h3>
+    <div class="space-y-3">
+      <label class="block text-sm text-slate-600">หมวด<input id="guCat" class="input mt-1" list="galCatList" maxlength="40" value="${esc(galState.cat && galState.cat !== '-' ? galState.cat : '')}" placeholder="เช่น สินค้าใหม่ (เว้นว่าง = ไม่ระบุหมวด)"></label>
+      <label class="block text-sm text-slate-600">คำอธิบาย<input id="guNote" class="input mt-1" maxlength="120" placeholder="ไม่ใส่ก็ได้"></label>
+      <label class="block text-sm text-slate-600">รูป (เลือกได้หลายรูป)<input id="guFiles" type="file" accept="image/*" multiple class="input mt-1"></label>
+      <p id="guStatus" class="text-xs text-slate-500"></p>
+    </div>
+    <div class="flex justify-end gap-2 mt-5"><button class="btn btn-ghost" data-gal-close>ยกเลิก</button><button class="btn btn-primary" id="guSave"><i data-lucide="upload" class="w-4 h-4"></i>อัปโหลด</button></div>`);
+  const btn = m.querySelector('#guSave'), st = m.querySelector('#guStatus');
+  btn.addEventListener('click', async () => {
+    const files = [...m.querySelector('#guFiles').files].filter(f => /^image\//.test(f.type));
+    if(!files.length){ toast('เลือกรูปก่อน', 'error'); return; }
+    const cat = m.querySelector('#guCat').value.trim(), note = m.querySelector('#guNote').value.trim();
+    btn.disabled = true;
+    const now = nowISO(), images = [];
+    for(let i = 0; i < files.length; i++){
+      st.textContent = `กำลังอัปโหลด ${i + 1}/${files.length}…`;
+      try{
+        const data = await shrinkImage(files[i]);
+        const {j} = await api('upload_image', {type: 'image/jpeg', data});
+        if(j.ok) images.push({id: j.id, url: j.url, at: now, by: currentUser.id, ...(note ? {note} : {})});
+        else toast((files[i].name || 'รูป') + ': ' + (j.error || 'อัปโหลดไม่สำเร็จ'), 'error');
+      }catch(err){ toast((files[i].name || 'รูป') + ': อัปโหลดไม่สำเร็จ', 'error'); }
+    }
+    if(images.length){
+      DB.albums = DB.albums || [];
+      DB.albums.push({id: 'album-up-' + Date.now().toString(36), category: cat, line_sender: currentUser.name, created_by: currentUser.id, images, created_at: now, updated_at: now});
+      logHistory('gallery_upload', (cat || 'ไม่ระบุหมวด') + ' ' + images.length + ' รูป');
+      saveDB(); toast('เพิ่ม ' + images.length + ' รูปแล้ว');
+    }
+    m.remove(); renderGallery();
+  });
 }
 function renderGallery(){
   const all = galleryItems();
@@ -3025,7 +3111,7 @@ function renderGallery(){
   const since = galState.period === 'all' ? '' : galState.period === 'today' ? todayISO() : new Date(Date.now() - (galState.period === '7' ? 7 : 30) * 86400000).toISOString();
   const rows = all.filter(x => (!galState.cat || x.cat === galState.cat) &&
     (!since || String(x.at) >= since) &&
-    (!q || (x.t ? [x.t.title, x.t.detail, x.t.line_sender] : [x.a.line_sender]).concat(x.cat).join(' ').toLowerCase().includes(q)));
+    (!q || (x.t ? [x.t.title, x.t.detail, x.t.line_sender] : [x.a.line_sender]).concat(x.cat, x.im.note || '').join(' ').toLowerCase().includes(q)));
   const cats = [...new Set(all.map(x => x.cat))].sort((a, b) => (a === '-') - (b === '-') || a.localeCompare(b));
   const catCount = c => all.filter(x => x.cat === c).length;
   const pending = rows.filter(x => !x.im.url && !x.im.gone).length;
@@ -3036,6 +3122,7 @@ function renderGallery(){
       <input id="galQ" class="input lg:max-w-sm" type="search" placeholder="ค้นหาหมวด / ชื่องาน / คนส่ง…" value="${esc(galState.q)}">
       <div class="flex gap-1 flex-wrap">${periods.map(([k, l]) => `<button class="btn btn-sm ${galState.period === k ? 'btn-primary' : 'btn-ghost'}" data-gal-period="${k}">${l}</button>`).join('')}</div>
       <span class="text-sm text-slate-500 lg:ml-auto badge-num">${rows.length} รูป${pending ? ' · กำลังโหลด ' + pending : ''}</span>
+      ${apiMode ? `<button class="btn btn-primary whitespace-nowrap" data-gal-add><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มรูป</button>` : ''}
     </div>
     <div class="flex gap-1.5 flex-wrap">
       <button class="btn btn-sm ${!galState.cat ? 'btn-primary' : 'btn-ghost'}" data-gal-cat="">ทุกหมวด <span class="opacity-70 badge-num">${all.length}</span></button>
@@ -3047,12 +3134,15 @@ function renderGallery(){
           : `<div class="bg-slate-100 flex flex-col items-center justify-center gap-1 text-slate-400 text-xs" style="width:260px;height:260px"><i data-lucide="${im.gone ? 'image-off' : 'loader'}" class="w-6 h-6"></i>${im.gone ? 'รูปหมดอายุ' : 'กำลังโหลด…'}</div>`}
         <div class="p-2.5 text-xs space-y-1 flex-1 flex flex-col">
           ${t ? `<div class="font-semibold text-slate-700 text-sm truncate ${t.status === 'done' ? 'line-through text-slate-400' : ''}" title="${esc(t.title)}">${esc(t.title)}</div>`
-              : `<div class="font-semibold text-slate-700 text-sm truncate">${cat === '-' ? 'รูปจาก LINE' : esc(cat)}</div>`}
+              : `<div class="font-semibold text-slate-700 text-sm truncate" title="${esc(im.note || '')}">${esc(im.note || (cat === '-' ? 'รูปจาก LINE' : cat))}</div>`}
           <div class="text-slate-400">${esc(localDateTime(at))}${(t || a).line_sender ? ' · ' + esc((t || a).line_sender) : ''}</div>
           <div class="flex items-center gap-1 mt-auto pt-1">
             ${cat !== '-' ? `<span class="pill pill-bigseller truncate max-w-[60%]">${esc(cat)}</span>` : ''}
-            ${t ? `<button class="ml-auto text-brand-700 hover:underline" data-gal-task="${esc(t.id)}">ดูงาน →</button>`
-                : isAdmin() ? `<button class="ml-auto text-red-500 hover:underline" data-gal-del="${esc(a.id)}|${esc(im.id)}">ลบ</button>` : ''}
+            <span class="ml-auto flex items-center gap-2">
+              ${galCanEdit(t, im) ? `<button class="text-slate-500 hover:underline" data-gal-edit="${t ? 't' : 'a'}|${esc((t || a).id)}|${esc(im.id)}">แก้ไข</button>` : ''}
+              ${t ? `<button class="text-brand-700 hover:underline" data-gal-task="${esc(t.id)}">ดูงาน →</button>`
+                  : galCanEdit(t, im) ? `<button class="text-red-500 hover:underline" data-gal-del="${esc(a.id)}|${esc(im.id)}">ลบ</button>` : ''}
+            </span>
           </div>
         </div>
       </div>`).join('')}</div>`
@@ -3063,14 +3153,22 @@ function renderGallery(){
 }
 document.addEventListener('input', e => { if(e.target.id === 'galQ'){ galState.q = e.target.value; const pos = e.target.selectionStart; renderGallery(); const el = $('#galQ'); if(el){ el.focus(); el.setSelectionRange(pos, pos); } } });
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-gal-period],[data-gal-task],[data-gal-cat],[data-gal-del]');
+  const b = e.target.closest('[data-gal-period],[data-gal-task],[data-gal-cat],[data-gal-del],[data-gal-add],[data-gal-edit]');
   if(!b) return;
+  if(b.hasAttribute('data-gal-add')){ openGalleryUpload(); return; }
+  if(b.dataset.galEdit){
+    const [kind, oid, mid] = b.dataset.galEdit.split('|');
+    const owner = (kind === 't' ? DB.tasks : (DB.albums || [])).find(x => x.id === oid);
+    const im = owner && (owner.images || []).find(x => x.id === mid);
+    if(im && galCanEdit(kind === 't' ? owner : null, im)) openGalleryEdit(owner, im, kind === 't');
+    return;
+  }
   if(b.dataset.galPeriod){ galState.period = b.dataset.galPeriod; renderGallery(); return; }
   if(b.hasAttribute('data-gal-cat')){ galState.cat = b.dataset.galCat; renderGallery(); return; }
   if(b.dataset.galDel){
-    if(!isAdmin() || !confirm('ลบรูปนี้ออกจากคลังรูป?')) return;
     const [aid, mid] = b.dataset.galDel.split('|');
     const al = (DB.albums || []).find(x => x.id === aid); if(!al) return;
+    if(!galCanEdit(null, (al.images || []).find(im => im.id === mid) || {}) || !confirm('ลบรูปนี้ออกจากคลังรูป?')) return;
     al.images = (al.images || []).filter(im => im.id !== mid); al.updated_at = nowISO();
     if(!al.images.length) DB.albums = DB.albums.filter(x => x !== al);
     saveDB(); renderGallery(); return;
