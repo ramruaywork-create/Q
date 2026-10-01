@@ -2504,23 +2504,41 @@ function showUserShopEditor(userId){
   $('#modalRoot').appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal || e.target.closest('[data-close-user-shop]')) modal.remove(); });
 }
+/* แผนก: รายชื่อเก็บใน DB.meta.departments · ผู้ใช้แต่ละคนมี u.dept */
+const departments = () => (DB.meta && Array.isArray(DB.meta.departments) ? DB.meta.departments : []);
+const deptOptions = sel => `<option value="">— ไม่ระบุแผนก —</option>${departments().map(d => `<option value="${esc(d)}" ${sel === d ? 'selected' : ''}>${esc(d)}</option>`).join('')}`;
 function renderUsers(){
+  const depts = departments();
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
     <div class="card p-5">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="user-plus" class="w-5 h-5 text-brand-600"></i>เพิ่มผู้ใช้ใหม่</h3>
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
         <input id="nuName" class="input" placeholder="ชื่อ (A, B, C)">
         <input id="nuUser" class="input" placeholder="Username">
         <input id="nuPass" type="password" class="input" placeholder="Password">
+        <select id="nuDept" class="input">${deptOptions('')}</select>
         <select id="nuRole" class="input"><option value="User">User</option><option value="Admin">Admin</option></select>
         <button id="nuAdd" class="btn btn-primary"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่ม</button>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="building-2" class="w-5 h-5 text-brand-600"></i>แผนก</h3>
+      <div class="flex flex-wrap items-center gap-2">
+        ${depts.length ? depts.map(d => `<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-lg border border-slate-200 bg-white text-sm">
+            <b>${esc(d)}</b><span class="text-xs text-slate-400 badge-num">${DB.users.filter(u => u.dept === d).length} คน</span>
+            <button class="text-slate-400 hover:text-red-500 px-1" data-dept-del="${esc(d)}" title="ลบแผนก">×</button></span>`).join('')
+          : '<span class="text-sm text-slate-400">ยังไม่มีแผนก</span>'}
+        <div class="flex items-center gap-2 ml-auto">
+          <input id="ndName" class="input !w-48" maxlength="40" placeholder="ชื่อแผนกใหม่ เช่น ออกแบบ">
+          <button id="ndAdd" class="btn btn-primary whitespace-nowrap"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มแผนก</button>
+        </div>
       </div>
     </div>
     <div class="card overflow-hidden">
       <div class="overflow-x-auto">
       <table class="data">
-        <thead><tr><th>ชื่อ</th><th>Username</th><th>Role</th><th>ร้านที่ทำได้</th><th>สถานะ</th><th>ทำวันนี้</th><th>ดำเนินการ</th></tr></thead>
+        <thead><tr><th>ชื่อ</th><th>Username</th><th>Role</th><th>แผนก</th><th>ร้านที่ทำได้</th><th>สถานะ</th><th>ทำวันนี้</th><th>ดำเนินการ</th></tr></thead>
         <tbody>${DB.users.map(u=>{
           const cnt=DB.worklogs.filter(w=>w.user_id===u.id&&w.status==='done'&&w.work_date===todayISO()).length;
           const allowed = u.role==='Admin' ? 'ทุกร้าน' : (Array.isArray(u.shop_ids)&&u.shop_ids.length ? DB.shops.filter(s=>u.shop_ids.includes(s.id)).map(s=>s.code).join(', ') : 'ยังไม่ได้กำหนด');
@@ -2528,6 +2546,7 @@ function renderUsers(){
             <td><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background:${u.role==='Admin'?'#9333ea':'#0d9488'}">${esc(u.name.slice(0,1))}</div><b>${esc(u.name)}</b></div></td>
             <td class="font-mono text-xs">${esc(u.username)}</td>
             <td>${u.role==='Admin'?'<span class="pill pill-bigseller">Admin</span>':'<span class="pill pill-pending">User</span>'}</td>
+            <td><select class="input !w-auto !py-1 text-sm" data-user-dept="${u.id}">${deptOptions(u.dept || '')}${u.dept && !departments().includes(u.dept) ? `<option value="${esc(u.dept)}" selected>${esc(u.dept)}</option>` : ''}</select></td>
             <td class="text-xs text-slate-600 max-w-[220px]">${esc(allowed)}</td>
             <td>${u.active?'<span class="pill pill-done">ใช้งาน</span>':'<span class="pill pill-pending">ปิดใช้</span>'}</td>
             <td class="badge-num font-bold">${cnt}</td>
@@ -2547,6 +2566,12 @@ function renderUsers(){
   if(window.lucide) lucide.createIcons();
 }
 
+document.addEventListener('change', e => {
+  const sel = e.target.closest('[data-user-dept]'); if(!sel || !isAdmin()) return;
+  const u = DB.users.find(x => x.id === sel.dataset.userDept); if(!u) return;
+  if(sel.value) u.dept = sel.value; else delete u.dept;
+  saveDB(); toast(u.name + ': ' + (sel.value || 'ไม่ระบุแผนก')); renderUsers();
+});
 /* ---------- Shop Management (admin) ---------- */
 document.addEventListener('change', e => {
   if(e.target.id !== 'nsPlat') return;
@@ -4050,12 +4075,28 @@ document.addEventListener('click', e=>{
   else if(e.target.id==='myCopy' || e.target.closest('#myCopy')){
     copyText(buildReportText(myWorkDate, currentUser.id)).then(ok=>toast(ok?'คัดลอกรายงานของฉันแล้ว ✓':'คัดลอกไม่สำเร็จ', ok?'success':'error'));
   }
+  else if(e.target.id==='ndAdd' || e.target.closest('#ndAdd')){
+    if(!isAdmin()) return;
+    const d = $('#ndName').value.trim();
+    if(!d){ toast('กรุณากรอกชื่อแผนก','error'); return; }
+    if(departments().some(x => x.toLowerCase() === d.toLowerCase())){ toast('มีแผนกนี้แล้ว','error'); return; }
+    DB.meta = DB.meta || {}; DB.meta.departments = [...departments(), d];
+    logHistory('dept_add', d); saveDB(); toast('เพิ่มแผนก ' + d); renderUsers();
+  }
+  else if(e.target.closest('[data-dept-del]')){
+    if(!isAdmin()) return;
+    const d = e.target.closest('[data-dept-del]').dataset.deptDel, n = DB.users.filter(u => u.dept === d).length;
+    if(!confirm('ลบแผนก "' + d + '"?' + (n ? '\n' + n + ' คนในแผนกนี้จะกลายเป็น ไม่ระบุแผนก' : ''))) return;
+    DB.meta.departments = departments().filter(x => x !== d);
+    DB.users.filter(u => u.dept === d).forEach(u => { delete u.dept; });
+    logHistory('dept_del', d); saveDB(); toast('ลบแผนก ' + d); renderUsers();
+  }
   else if(e.target.id==='nuAdd' || e.target.closest('#nuAdd')){
-    const name=$('#nuName').value.trim(), username=$('#nuUser').value.trim(), pass=$('#nuPass').value, role=$('#nuRole').value;
+    const name=$('#nuName').value.trim(), username=$('#nuUser').value.trim(), pass=$('#nuPass').value, role=$('#nuRole').value, dept=$('#nuDept').value;
     if(!name||!username||!pass){ toast('กรุณากรอกข้อมูลให้ครบ','error'); return; }
     if(DB.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ toast('Username ซ้ำ','error'); return; }
     if(pass.length<4){ toast('รหัสผ่านต้องอย่างน้อย 4 ตัวอักษร','error'); return; }
-    const newUser = {id:uid(), name, username, ...(apiMode?{new_password:pass}:{pass:hash(pass)}), role, active:true, shop_ids: role==='Admin'?DB.shops.filter(s=>s.active).map(s=>s.id):[], created_at:nowISO()};
+    const newUser = {id:uid(), name, username, ...(apiMode?{new_password:pass}:{pass:hash(pass)}), role, ...(dept?{dept}:{}), active:true, shop_ids: role==='Admin'?DB.shops.filter(s=>s.active).map(s=>s.id):[], created_at:nowISO()};
     DB.users.push(newUser);
     saveDB(); toast('เพิ่มผู้ใช้ '+name+' สำเร็จ'); renderUsers();
   }
