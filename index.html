@@ -2972,6 +2972,7 @@ const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_
    ts | type (TASK/DONE) | title | person | due | sender | message
    หน้านี้อ่านชีตทุก 30 วินาที แล้วเพิ่มเป็นงาน เช่น "@Sofia Alvarez /AM/ แก้หน่อย"
    → งาน "แก้หน่อย" · @Sofia Alvarez · ร้าน AM  (ชีตต้องแชร์แบบ "ทุกคนที่มีลิงก์ดูได้") */
+const LINE_FEED_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/line-webhook';
 const LINE_LIVE_SHEET_ID = '1a9i7Q-liFcLHIhu6VXdynHy2yrrs1YpUGxXxKx7pnyE';
 const LINE_LIVE_SHEET = 'Untitled';
 const LINE_POLL_MS = 30000;
@@ -3337,11 +3338,21 @@ async function pollLineLive(){
   if(!currentUser || !DB || lineLive.busy) return;
   lineLive.busy = true;
   try{
-    const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
-    const v = (c, i) => String(c[i]?.v ?? '').trim();
-    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8), quote:v(c,9), quoted:v(c,10).replace(/^id:/i, '')}; })
-      .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
-    rows.forEach(r => { if(r.type === 'IMAGE') r.message = r.message.replace(/^id:/i, '').trim(); }); // Make ใส่ "id:" นำหน้า กันชีตปัดเลขยาว
+    // ข้อความกลุ่มจาก LINE webhook (Supabase) · ยังไม่ได้ย้าย webhook → อ่านจาก Google Sheet เดิม
+    let rows = [];
+    try{
+      const fr = await fetch(LINE_FEED_URL + '?a=feed', {cache: 'no-store', headers: {'X-Session': getToken()}});
+      const fj = fr.ok ? await fr.json() : null;
+      rows = ((fj && fj.rows) || []).map(m => ({id: String(m.ts), type: m.type, title: m.type === 'DONE' ? m.message : '', person: '', due: '', sender: m.sender, message: m.message,
+        group: m.group_id, user: m.user_id, quote: m.quote_token, quoted: m.quoted_id}));
+    }catch(e){}
+    if(!rows.length){
+      const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
+      const v = (c, i) => String(c[i]?.v ?? '').trim();
+      rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8), quote:v(c,9), quoted:v(c,10).replace(/^id:/i, '')}; });
+      rows.forEach(r => { if(r.type === 'IMAGE') r.message = r.message.replace(/^id:/i, '').trim(); }); // Make ใส่ "id:" นำหน้า กันชีตปัดเลขยาว
+    }
+    rows = rows.filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
     DB.meta = DB.meta || {};
     const firstRun = DB.meta.lineLastTs == null;
     let changed = false;
