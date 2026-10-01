@@ -763,7 +763,6 @@ function openTiktokUrlDialog(defaultUrl, onSave){
 const NAV = [ // group = หัวข้อในเมนูซ้าย
   {id:'dashboard', label:'แดชบอร์ด',     icon:'layout-dashboard', admin:false, group:'ภาพรวม'},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',   admin:false, group:'ภาพรวม'},
-  {id:'check',     label:'เช็ก SKU',      icon:'scan-search',      admin:false, group:'สินค้า'},
   {id:'skulist',   label:'รายการ SKU',    icon:'list',             admin:false, group:'สินค้า'},
   {id:'tiktokjobs',label:'ส่งงาน TikTok', icon:'video',            admin:false, group:'สินค้า'},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true, group:'สินค้า'},
@@ -792,7 +791,7 @@ function renderNav(){
   el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map((n, i, arr)=>{
     const cnt = navBadgeCount(n.id);
     const head = (i === 0 || arr[i-1].group !== n.group) ? '<div class="px-3 '+(i ? 'pt-4' : 'pt-1')+' pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">'+n.group+'</div>' : '';
-    const on = currentView === n.id || (n.id === 'tasks' && currentView === 'campaigns');
+    const on = currentView === n.id || (n.id === 'tasks' && (currentView === 'campaigns' || currentView === 'check'));
     return head + '<div class="nav-item '+(on?'active':'')+'" data-nav="'+n.id+'">'+
     '<i data-lucide="'+n.icon+'" class="w-4.5 h-4.5" style="width:18px;height:18px;"></i><span class="flex-1">'+n.label+'</span>'+
     (cnt ? '<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num min-w-[18px] text-center">'+(cnt > 99 ? '99+' : cnt)+'</span>' : '')+'</div>';
@@ -803,7 +802,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'แก้ไข SKU (Supabase products)', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'งาน', tiktokjobs:'ส่งงาน TikTok', skulist:'แก้ไข SKU (Supabase products)', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -1573,7 +1572,7 @@ function renderCheck(){
   if(!shopsOf(checkState.platform).length){
     const firstPlat = PLATFORMS.find(pl => shopsOf(pl).length);
     if(!firstPlat){
-      $('#view').innerHTML = `<div class="fade-in card p-10 text-center text-slate-500">คุณยังไม่ได้รับมอบหมายร้านใดเลย กรุณาติดต่อ Admin เพื่อกำหนดร้านที่ทำได้</div>`;
+      $('#view').innerHTML = `<div class="fade-in space-y-4">${workTabsHtml('check')}<div class="card p-10 text-center text-slate-500">คุณยังไม่ได้รับมอบหมายร้านใดเลย กรุณาติดต่อ Admin เพื่อกำหนดร้านที่ทำได้</div></div>`;
       return;
     }
     checkState.platform = firstPlat; checkState.shopId = null; checkState.selected.clear();
@@ -1603,6 +1602,7 @@ function renderCheck(){
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    ${workTabsHtml('check')}
     <div class="card overflow-hidden">
       <div class="p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -2636,7 +2636,7 @@ function workTabsHtml(active){
   const nCamp = navBadgeCount('campaigns');
   const tab = (id, icon, label, n) => `<button class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${active === id ? 'bg-white shadow text-brand-700' : 'text-slate-500 hover:text-slate-700'}" data-work-tab="${id}">
       <i data-lucide="${icon}" class="w-4 h-4"></i>${label}${n ? `<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num">${n}</span>` : ''}</button>`;
-  return `<div class="inline-flex gap-1 p-1 rounded-xl bg-slate-100">${tab('tasks', 'list-todo', 'งานทั่วไป', nTask)}${tab('campaigns', 'clapperboard', 'วิดีโอแคมเปญ', nCamp)}</div>`;
+  return `<div class="inline-flex flex-wrap gap-1 p-1 rounded-xl bg-slate-100">${tab('tasks', 'list-todo', 'งานทั่วไป', nTask)}${tab('campaigns', 'clapperboard', 'วิดีโอแคมเปญ', nCamp)}${tab('check', 'scan-search', 'เช็ก SKU', 0)}</div>`;
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-work-tab]'); if(b && b.dataset.workTab !== currentView) navTo(b.dataset.workTab); });
 function renderCampaigns(){
