@@ -3041,10 +3041,10 @@ function renderGallery(){
       <button class="btn btn-sm ${!galState.cat ? 'btn-primary' : 'btn-ghost'}" data-gal-cat="">ทุกหมวด <span class="opacity-70 badge-num">${all.length}</span></button>
       ${cats.map(c => `<button class="btn btn-sm ${galState.cat === c ? 'btn-primary' : 'btn-ghost'}" data-gal-cat="${esc(c)}">${c === '-' ? 'ไม่ระบุหมวด' : esc(c)} <span class="opacity-70 badge-num">${catCount(c)}</span></button>`).join('')}
     </div>
-    ${rows.length ? `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">${rows.map(({t, a, im, at, cat}) => `
+    ${rows.length ? `<div class="grid gap-3 justify-start" style="grid-template-columns:repeat(auto-fill,260px)">${rows.map(({t, a, im, at, cat}) => `
       <div class="card overflow-hidden flex flex-col">
-        ${im.url ? `<button type="button" class="block aspect-square bg-slate-100" data-img-view="${esc(im.url)}" title="ดูรูปใหญ่"><img src="${esc(im.url)}" alt="รูปจาก LINE" loading="lazy" class="w-full h-full object-cover" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'w-full h-full flex items-center justify-center text-xs text-slate-400',textContent:'รูปหมดอายุ'}))"></button>`
-          : `<div class="aspect-square bg-slate-100 flex flex-col items-center justify-center gap-1 text-slate-400 text-xs"><i data-lucide="${im.gone ? 'image-off' : 'loader'}" class="w-6 h-6"></i>${im.gone ? 'รูปหมดอายุ' : 'กำลังโหลด…'}</div>`}
+        ${im.url ? `<button type="button" class="block bg-slate-100 overflow-hidden" style="width:260px;height:260px" data-img-view="${esc(im.url)}" title="ดูรูปใหญ่"><img src="${esc(im.url)}" alt="รูปจาก LINE" loading="lazy" class="w-full h-full object-cover" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'w-full h-full flex items-center justify-center text-xs text-slate-400',textContent:'รูปหมดอายุ'}))"></button>`
+          : `<div class="bg-slate-100 flex flex-col items-center justify-center gap-1 text-slate-400 text-xs" style="width:260px;height:260px"><i data-lucide="${im.gone ? 'image-off' : 'loader'}" class="w-6 h-6"></i>${im.gone ? 'รูปหมดอายุ' : 'กำลังโหลด…'}</div>`}
         <div class="p-2.5 text-xs space-y-1 flex-1 flex flex-col">
           ${t ? `<div class="font-semibold text-slate-700 text-sm truncate ${t.status === 'done' ? 'line-through text-slate-400' : ''}" title="${esc(t.title)}">${esc(t.title)}</div>`
               : `<div class="font-semibold text-slate-700 text-sm truncate">${cat === '-' ? 'รูปจาก LINE' : esc(cat)}</div>`}
