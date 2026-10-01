@@ -505,7 +505,7 @@ function loadDB(){
   saveDB();
 }
 function renderCurrentView(){
-  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
+  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, gallery:renderGallery, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
   if(currentUser) renderNav();
@@ -768,6 +768,7 @@ const NAV = [
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
   {id:'tasks',     label:'ติดตามงาน',    icon:'list-todo',     admin:false},
   {id:'campaigns', label:'วิดีโอแคมเปญ', icon:'clapperboard',  admin:false},
+  {id:'gallery',   label:'คลังรูป',      icon:'images',        admin:false},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',admin:false},
   {id:'users',     label:'จัดการ User',  icon:'users',         admin:true},
   {id:'shops',     label:'จัดการร้าน',   icon:'store',         admin:true},
@@ -800,7 +801,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', campaigns:'วิดีโอแคมเปญ', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', campaigns:'วิดีโอแคมเปญ', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -2991,8 +2992,61 @@ async function loadTaskImages(){
     }catch(e){}
     finally{ imgLoading.delete(im.id); }
   }
-  if(changed){ saveDB(); if(currentView === 'tasks' && !isUserBusy()) renderCurrentViewQuiet(); }
+  if(changed){ saveDB(); if((currentView === 'tasks' || currentView === 'gallery') && !isUserBusy()) renderCurrentViewQuiet(); }
 }
+/* ---------- คลังรูป: รูปทั้งหมดจากกลุ่ม LINE (ของงานที่ผู้ใช้คนนี้เห็น) ---------- */
+const galState = {q:'', shop:'', period:'all'};
+function galleryItems(){
+  const out = [];
+  visibleTasks().forEach(t => (t.images || []).forEach(im => out.push({t, im, at: im.at || t.created_at})));
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+function renderGallery(){
+  const all = galleryItems();
+  const q = galState.q.trim().toLowerCase();
+  const since = galState.period === 'all' ? '' : galState.period === 'today' ? todayISO() : new Date(Date.now() - (galState.period === '7' ? 7 : 30) * 86400000).toISOString();
+  const rows = all.filter(x => (!galState.shop || (taskShopLabel(x.t) || '-') === galState.shop) &&
+    (!since || String(x.at) >= since) &&
+    (!q || [x.t.title, x.t.detail, x.t.line_sender, taskShopLabel(x.t)].join(' ').toLowerCase().includes(q)));
+  const shops = [...new Set(all.map(x => taskShopLabel(x.t) || '-'))].sort();
+  const pending = rows.filter(x => !x.im.url && !x.im.gone).length;
+  const periods = [['all','ทั้งหมด'],['today','วันนี้'],['7','7 วัน'],['30','30 วัน']];
+  $('#view').innerHTML = `
+  <div class="fade-in space-y-4">
+    <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+      <input id="galQ" class="input lg:max-w-sm" type="search" placeholder="ค้นหาชื่องาน / คนส่ง / ร้าน…" value="${esc(galState.q)}">
+      <select id="galShop" class="input lg:max-w-[12rem]"><option value="">ทุกร้าน</option>${shops.map(x => `<option value="${esc(x)}" ${galState.shop === x ? 'selected' : ''}>${x === '-' ? 'ไม่ระบุร้าน' : esc(x)}</option>`).join('')}</select>
+      <div class="flex gap-1 flex-wrap">${periods.map(([k, l]) => `<button class="btn btn-sm ${galState.period === k ? 'btn-primary' : 'btn-ghost'}" data-gal-period="${k}">${l}</button>`).join('')}</div>
+      <span class="text-sm text-slate-500 lg:ml-auto badge-num">${rows.length} รูป${pending ? ' · กำลังโหลด ' + pending : ''}</span>
+    </div>
+    ${rows.length ? `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">${rows.map(({t, im, at}) => `
+      <div class="card overflow-hidden flex flex-col">
+        ${im.url ? `<button type="button" class="block aspect-square bg-slate-100" data-img-view="${esc(im.url)}" title="ดูรูปใหญ่"><img src="${esc(im.url)}" alt="รูปจาก LINE" loading="lazy" class="w-full h-full object-cover" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'w-full h-full flex items-center justify-center text-xs text-slate-400',textContent:'รูปหมดอายุ'}))"></button>`
+          : `<div class="aspect-square bg-slate-100 flex flex-col items-center justify-center gap-1 text-slate-400 text-xs"><i data-lucide="${im.gone ? 'image-off' : 'loader'}" class="w-6 h-6"></i>${im.gone ? 'รูปหมดอายุ' : 'กำลังโหลด…'}</div>`}
+        <div class="p-2.5 text-xs space-y-1 flex-1 flex flex-col">
+          <div class="font-semibold text-slate-700 text-sm truncate ${t.status === 'done' ? 'line-through text-slate-400' : ''}" title="${esc(t.title)}">${esc(t.title)}</div>
+          <div class="text-slate-400">${esc(localDateTime(at))}${t.line_sender ? ' · ' + esc(t.line_sender) : ''}</div>
+          <div class="flex items-center gap-1 mt-auto pt-1">
+            ${taskShopLabel(t) ? `<span class="pill pill-bigseller">${esc(taskShopLabel(t))}</span>` : ''}
+            <button class="ml-auto text-brand-700 hover:underline" data-gal-task="${esc(t.id)}">ดูงาน →</button>
+          </div>
+        </div>
+      </div>`).join('')}</div>`
+    : `<div class="card p-10 text-center text-slate-400">${all.length ? 'ไม่พบรูปที่ตรงกับตัวกรอง' : 'ยังไม่มีรูป — ส่งรูปในกลุ่ม LINE ตามหลังข้อความที่แท็กบอท ภายใน 3 นาที รูปจะมาอยู่ที่นี่'}</div>`}
+  </div>`;
+  if(window.lucide) lucide.createIcons();
+  if(pending) loadTaskImages();
+}
+document.addEventListener('input', e => { if(e.target.id === 'galQ'){ galState.q = e.target.value; const pos = e.target.selectionStart; renderGallery(); const el = $('#galQ'); if(el){ el.focus(); el.setSelectionRange(pos, pos); } } });
+document.addEventListener('change', e => { if(e.target.id === 'galShop'){ galState.shop = e.target.value; renderGallery(); } });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-gal-period],[data-gal-task]');
+  if(!b) return;
+  if(b.dataset.galPeriod){ galState.period = b.dataset.galPeriod; renderGallery(); return; }
+  const t = DB.tasks.find(x => x.id === b.dataset.galTask); if(!t) return;
+  taskState.filter = 'all'; taskState.person = ''; taskState.q = t.title;
+  navTo('tasks');
+});
 function taskImagesHtml(t){
   const imgs = t.images || [];
   if(!imgs.length) return '';
