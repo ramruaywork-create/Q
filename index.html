@@ -760,18 +760,18 @@ function openTiktokUrlDialog(defaultUrl, onSave){
 }
 
 /* ---------- navigation ---------- */
-const NAV = [
-  {id:'dashboard', label:'แดชบอร์ด', icon:'layout-dashboard', admin:false},
-  {id:'check',     label:'เช็ก SKU',     icon:'scan-search',   admin:false},
-  {id:'tiktokjobs',label:'ส่งงาน TikTok',icon:'video', admin:false},
-  {id:'skulist',   label:'รายการ SKU',   icon:'list',          admin:false},
-  {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
-  {id:'tasks',     label:'งาน',          icon:'list-todo',     admin:false}, // แท็บ: งานทั่วไป / วิดีโอแคมเปญ
-  {id:'gallery',   label:'คลังรูป',      icon:'images',        admin:false},
-  {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',admin:false},
-  {id:'users',     label:'จัดการ User',  icon:'users',         admin:true},
-  {id:'shops',     label:'จัดการร้าน',   icon:'store',         admin:true},
-  {id:'settings',  label:'Settings',     icon:'settings',      admin:false}
+const NAV = [ // group = หัวข้อในเมนูซ้าย
+  {id:'dashboard', label:'แดชบอร์ด',     icon:'layout-dashboard', admin:false, group:'ภาพรวม'},
+  {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',   admin:false, group:'ภาพรวม'},
+  {id:'check',     label:'เช็ก SKU',      icon:'scan-search',      admin:false, group:'สินค้า'},
+  {id:'skulist',   label:'รายการ SKU',    icon:'list',             admin:false, group:'สินค้า'},
+  {id:'tiktokjobs',label:'ส่งงาน TikTok', icon:'video',            admin:false, group:'สินค้า'},
+  {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true, group:'สินค้า'},
+  {id:'tasks',     label:'งาน',           icon:'list-todo',        admin:false, group:'งานจาก LINE'}, // แท็บ: งานทั่วไป / วิดีโอแคมเปญ
+  {id:'gallery',   label:'คลังรูป',       icon:'images',           admin:false, group:'งานจาก LINE'},
+  {id:'users',     label:'จัดการ User',   icon:'users',            admin:true,  group:'ตั้งค่า'},
+  {id:'shops',     label:'จัดการร้าน',    icon:'store',            admin:true,  group:'ตั้งค่า'},
+  {id:'settings',  label:'Settings',      icon:'settings',         admin:false, group:'ตั้งค่า'}
 ];
 let currentView = 'dashboard';
 /* ตัวเลขแจ้งเตือนสีแดงที่เมนู */
@@ -789,10 +789,11 @@ function navBadgeCount(id){
 }
 function renderNav(){
   const el = $('#navMenu');
-  el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map(n=>{
+  el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map((n, i, arr)=>{
     const cnt = navBadgeCount(n.id);
+    const head = (i === 0 || arr[i-1].group !== n.group) ? '<div class="px-3 '+(i ? 'pt-4' : 'pt-1')+' pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">'+n.group+'</div>' : '';
     const on = currentView === n.id || (n.id === 'tasks' && currentView === 'campaigns');
-    return '<div class="nav-item '+(on?'active':'')+'" data-nav="'+n.id+'">'+
+    return head + '<div class="nav-item '+(on?'active':'')+'" data-nav="'+n.id+'">'+
     '<i data-lucide="'+n.icon+'" class="w-4.5 h-4.5" style="width:18px;height:18px;"></i><span class="flex-1">'+n.label+'</span>'+
     (cnt ? '<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num min-w-[18px] text-center">'+(cnt > 99 ? '99+' : cnt)+'</span>' : '')+'</div>';
   }).join('');
