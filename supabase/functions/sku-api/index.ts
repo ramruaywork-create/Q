@@ -341,6 +341,9 @@ Deno.serve(async (req) => {
         await withDb((db) => { const t = db.tasks.find((x: Obj) => x.id === id); if (t && Array.isArray(t.line_asks)) { t.line_asks = t.line_asks.filter((a: Obj) => a.at !== at); t.updated_at = nowIso(); } }, true);
         return respond({ ok: false, error: "ส่งข้อความ LINE ไม่สำเร็จ (" + r.status + ")" });
       }
+      // จำ id ข้อความของบอท → คนตอบโดยกด Reply ข้อความนี้ เว็บจะจับคู่คำตอบกับงานได้ (quotedMessageId)
+      const msgId = String(((await r.json().catch(() => ({}))) as Obj)?.sentMessages?.[0]?.id ?? "");
+      if (msgId) await withDb((db) => { const t = db.tasks.find((x: Obj) => x.id === id); const a = t && Array.isArray(t.line_asks) ? t.line_asks.find((x: Obj) => x.at === at) : null; if (a) { a.msg_id = msgId; t.updated_at = nowIso(); } }, true);
       return respond({ ok: true, sent: true });
     }
 

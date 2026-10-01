@@ -2866,6 +2866,7 @@ function renderTaskList(){
         <div class="font-semibold break-words ${t.status==='done'?'line-through text-slate-400':''}">${esc(t.title)}</div>
         ${t.detail ? `<div class="text-sm text-slate-500 whitespace-pre-wrap break-words mt-0.5">${esc(t.detail)}</div>` : ''}
         ${taskImagesHtml(t)}
+        ${taskThreadHtml(t)}
         <div class="flex flex-wrap gap-1.5 mt-2">
           ${t.source === 'line' ? `<span class="pill" style="background:#06c755;color:#fff" title="${esc(t.line_text||'')}">LINE</span>` : ''}
           ${t.person ? `<span class="pill pill-tiktok" title="ชื่อที่ถูกแท็ก">@${esc(t.person)}</span>` : ''}
@@ -2874,7 +2875,9 @@ function renderTaskList(){
           ${taskShopLabel(t) ? `<span class="pill pill-bigseller"><i data-lucide="store" class="w-3 h-3"></i>${taskShop(t) ? esc(taskShop(t).platform)+' · ' : ''}${esc(taskShopLabel(t))}</span>` : ''}
           ${t.due ? `<span class="pill ${late ? 'bg-red-600 text-white' : dueToday ? 'pill-progress' : 'pill-pending'}"><i data-lucide="calendar" class="w-3 h-3"></i>${fmtDateTH(t.due)}${late ? ' · เลยกำหนด' : dueToday ? ' · วันนี้' : ''}</span>` : ''}
           <span class="pill ${t.priority==3 ? 'bg-red-100 text-red-700' : t.priority==2 ? 'pill-progress' : 'pill-pending'}">${TASK_PRIO[t.priority] || '-'}</span>
-          ${(t.line_asks || []).length ? `<span class="pill" style="background:#fef3c7;color:#b45309" title="${esc(t.line_asks.map(a => localDateTime(a.at) + ' · ' + (userById(a.by)?.name || '') + ': ' + a.text).join('\n'))}"><i data-lucide="message-circle-question" class="w-3 h-3"></i>ถามกลับแล้ว${t.line_asks.length > 1 ? ' ' + t.line_asks.length : ''}</span>` : ''}
+          ${(t.line_asks || []).length ? ((t.line_replies || []).length && Date.parse(t.line_replies[t.line_replies.length - 1].at) > Math.max(...t.line_asks.map(a => Date.parse(a.at)))
+              ? `<span class="pill" style="background:#dcfce7;color:#15803d"><i data-lucide="message-circle-reply" class="w-3 h-3"></i>ตอบแล้ว</span>`
+              : `<span class="pill" style="background:#fef3c7;color:#b45309"><i data-lucide="message-circle-question" class="w-3 h-3"></i>รอคำตอบ</span>`) : ''}
           ${t.status==='done' && t.done_at ? `<span class="pill pill-done"><i data-lucide="check" class="w-3 h-3"></i>${fmtDateTH(t.done_at)}</span>` : ''}
         </div>
       </div>
@@ -3037,6 +3040,14 @@ function lineAlbumCategory(msg){
 }
 /* รูปจากกลุ่ม → งาน หรืออัลบั้ม ของคนเดิมในกลุ่มเดิม
    งาน: ห่างข้อความไม่เกิน 3 นาที (รูปก่อนหรือหลังก็ได้) · อัลบั้ม: ห่างจากคำสั่งหรือรูปก่อนหน้าในอัลบั้มไม่เกิน 3 นาที (ส่งรูปต่อกันได้เรื่อยๆ) */
+function lineReplyTarget(r){
+  const ts = Number(r.id);
+  const byId = DB.tasks.find(t => (t.line_asks || []).some(a => a.msg_id && a.msg_id === r.quoted));
+  if(byId) return byId;
+  const cands = DB.tasks.filter(t => t.line_group === r.group && t.line_user === r.user &&
+    (t.line_asks || []).some(a => !a.msg_id && Date.parse(a.at) <= ts && ts - Date.parse(a.at) <= 86400000));
+  return cands.sort((a, b) => Math.max(...b.line_asks.map(x => Date.parse(x.at))) - Math.max(...a.line_asks.map(x => Date.parse(x.at))))[0] || null;
+}
 function lineImageTarget(r){
   const ts = Number(r.id);
   const last = x => Math.max(Date.parse(x.created_at), ...(x.images || []).map(im => Date.parse(im.at) || 0).filter(v => v <= ts));
@@ -3249,6 +3260,19 @@ document.addEventListener('click', e => {
   taskState.filter = 'all'; taskState.person = ''; taskState.q = t.title;
   navTo('tasks');
 });
+/* ถาม-ตอบกับคนสั่งงานในกลุ่ม LINE เรียงตามเวลา */
+function taskThreadHtml(t){
+  const items = [...(t.line_asks || []).map(a => ({at: a.at, ask: true, who: userById(a.by)?.name || 'ทีม', text: a.text})),
+                 ...(t.line_replies || []).map(r => ({at: r.at, ask: false, who: r.sender || t.line_sender || 'คนสั่งงาน', text: r.text}))]
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  if(!items.length) return '';
+  return `<div class="mt-2 space-y-1.5 border-l-2 pl-3" style="border-color:#e2e8f0">${items.map(x => `
+    <div class="text-sm ${x.ask ? 'text-amber-800' : 'text-slate-800'}">
+      <span class="text-xs font-semibold ${x.ask ? 'text-amber-600' : 'text-green-700'}">${x.ask ? 'ถาม' : 'ตอบ'} · ${esc(x.who)}</span>
+      <span class="text-xs text-slate-400 ml-1">${esc(localDateTime(x.at))}</span>
+      <div class="whitespace-pre-wrap break-words">${esc(x.text)}</div>
+    </div>`).join('')}</div>`;
+}
 function taskImagesHtml(t){
   const imgs = t.images || [];
   if(!imgs.length) return '';
@@ -3279,7 +3303,7 @@ async function pollLineLive(){
   try{
     const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
     const v = (c, i) => String(c[i]?.v ?? '').trim();
-    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8), quote:v(c,9)}; })
+    const rows = (json.table.rows || []).map(r => { const c = r.c || []; return {id:v(c,0), type:v(c,1).toUpperCase(), title:v(c,2), person:v(c,3), due:v(c,4), sender:v(c,5), message:v(c,6), group:v(c,7), user:v(c,8), quote:v(c,9), quoted:v(c,10).replace(/^id:/i, '')}; })
       .filter(r => r.id).sort((a, b) => Number(a.id) - Number(b.id));
     rows.forEach(r => { if(r.type === 'IMAGE') r.message = r.message.replace(/^id:/i, '').trim(); }); // Make ใส่ "id:" นำหน้า กันชีตปัดเลขยาว
     DB.meta = DB.meta || {};
@@ -3304,7 +3328,7 @@ async function pollLineLive(){
     const last = Number(DB.meta.lineLastTs) || 0;
     const fresh = rows.filter(r => Number(r.id) > last);
     for(const r of fresh){
-      if(r.type === 'IMAGE') continue;
+      if(r.type === 'IMAGE' || (r.quoted && lineReplyTarget(r))) continue;
       if(r.type !== 'DONE' && lineTagsTarget(r.message) && campTagRe().test(r.message)){
         const res = applyCampaignRow(r, r.message, campKindOf(r.message));
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
@@ -3346,7 +3370,7 @@ async function pollLineLive(){
     /* ข้อความต่อท้ายที่ไม่ได้แท็กใคร จากคนเดิม ภายใน 3 นาที → ต่อเป็นรายละเอียดของงานล่าสุด
        ดูทุกแถว (ไม่ใช่แค่แถวใหม่) เพราะเบราว์เซอร์ที่ยังเปิดหน้าเก่าอาจอ่านแถวไปก่อน — แต่ละข้อความต่อได้ครั้งเดียว (line_extra_ids) */
     for(const r of rows){
-      if(r.type === 'DONE' || r.type === 'IMAGE' || !r.message || r.message.includes('@') || vdoParentOf(r, rows)) continue;
+      if(r.type === 'DONE' || r.type === 'IMAGE' || !r.message || r.message.includes('@') || vdoParentOf(r, rows) || (r.quoted && lineReplyTarget(r))) continue;
       const recent = recentLineTasks(r);
       if(!recent.length) continue;
       const batchTs = Date.parse(recent[0].created_at);
@@ -3360,6 +3384,18 @@ async function pollLineLive(){
         if(String(target.updated_at || '') < extraAt) target.updated_at = extraAt;
         changed = true;
       }
+    }
+    /* คำตอบของ "ถามกลับ": คนในกลุ่มกด Reply ข้อความคำถามของบอท → เก็บเป็นคำตอบในงาน
+       จับคู่ด้วย id ข้อความบอท (msg_id) · คำถามเก่าที่ไม่มี msg_id: Reply จากคนสั่งงานในกลุ่มเดียวกันภายใน 24 ชม. หลังถาม */
+    for(const r of rows){
+      if(r.type === 'IMAGE' || !r.quoted || !r.message) continue;
+      const t = lineReplyTarget(r);
+      if(!t || (t.line_replies || []).some(x => x.id === r.id)) continue;
+      const at = new Date(Number(r.id)).toISOString();
+      t.line_replies = [...(t.line_replies || []), {id: r.id, at, text: r.message, sender: r.sender || ''}];
+      if(String(t.updated_at || '') < at) t.updated_at = at;
+      changed = true;
+      if(!firstRun && visibleTasks().includes(t)) toast((r.sender || 'คนสั่งงาน') + ' ตอบ: ' + r.message.slice(0, 60), 'info');
     }
     /* รูปจากกลุ่ม (แถว IMAGE: message = LINE message id) → แนบกับงานของคนเดิมในกลุ่มเดิม ห่างไม่เกิน 3 นาที
        ส่งรูปก่อนหรือหลังข้อความแท็กก็ได้ · ดูทุกแถว เพราะงานอาจถูกสร้างทีหลังรูป · แต่ละรูปแนบได้ครั้งเดียว */
