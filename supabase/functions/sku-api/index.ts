@@ -309,6 +309,41 @@ Deno.serve(async (req) => {
       return respond({ ok: true, sent: true });
     }
 
+    /* ถามกลับงานจาก LINE (ไม่เข้าใจ / ขอข้อมูลเพิ่ม) → บอท Reply ข้อความเดิมในกลุ่ม แท็กคนสั่งงาน · เก็บประวัติไว้ใน t.line_asks */
+    if (action === "line_ask") {
+      if (req.method !== "POST") return respond({ ok: false }, 405);
+      const lineToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") || "";
+      if (!lineToken) return respond({ ok: false, error: "ยังไม่ได้ตั้งค่า LINE token ใน Supabase" });
+      const inp = await readJson(req);
+      const id = String(inp.id ?? ""), text = String(inp.text ?? "").trim().slice(0, 500);
+      if (!text) return respond({ ok: false, error: "พิมพ์คำถามก่อน" });
+      const at = nowIso();
+      const claim = await withDb((db) => {
+        const me = activeUser(db, uid);
+        const t = db.tasks.find((x: Obj) => x.id === id);
+        if (!me || !t || !t.line_group || !t.line_user) return null;
+        t.line_asks = [...(Array.isArray(t.line_asks) ? t.line_asks : []), { at, by: me.id, text }];
+        t.updated_at = at;
+        return { group: t.line_group as string, user: t.line_user as string, quote: String(t.line_quote || "") };
+      }, true);
+      if (!claim) return respond({ ok: false, error: "งานนี้ไม่ได้มาจากกลุ่ม LINE" });
+      const r = await fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + lineToken },
+        body: JSON.stringify({ to: claim.group, messages: [{
+          type: "textV2", text: "{requester} " + text,
+          substitution: { requester: { type: "mention", mentionee: { type: "user", userId: claim.user } } },
+          ...(claim.quote ? { quoteToken: claim.quote } : {}),
+        }] }),
+      });
+      if (!r.ok) {
+        console.error("LINE push failed", r.status, await r.text());
+        await withDb((db) => { const t = db.tasks.find((x: Obj) => x.id === id); if (t && Array.isArray(t.line_asks)) { t.line_asks = t.line_asks.filter((a: Obj) => a.at !== at); t.updated_at = nowIso(); } }, true);
+        return respond({ ok: false, error: "ส่งข้อความ LINE ไม่สำเร็จ (" + r.status + ")" });
+      }
+      return respond({ ok: true, sent: true });
+    }
+
     /* รูปจากกลุ่ม LINE (ชีตมีแค่ message id) → ดึงรูปจาก LINE มาเก็บใน Storage bucket line-images แล้วคืนลิงก์
        ชื่อไฟล์มีเลขสุ่มต่อท้าย เดาลิงก์จาก message id ไม่ได้ */
     if (action === "line_image") {
