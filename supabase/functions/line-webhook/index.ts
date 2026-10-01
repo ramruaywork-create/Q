@@ -1,5 +1,5 @@
 /* ============================================================
-   LINE webhook → เก็บข้อความกลุ่มลงตาราง line_messages (แทน Make + Google Sheet)
+   LINE webhook → เก็บข้อความกลุ่มลงตาราง line_inbox (แทน Make + Google Sheet)
    - POST จาก LINE: ตรวจลายเซ็น X-Line-Signature ด้วย LINE_CHANNEL_SECRET ก่อนทุกครั้ง
    - GET ?a=feed : หน้าเว็บอ่านข้อความล่าสุด (ต้องล็อกอิน — X-Session เดียวกับ sku-api)
    ============================================================ */
@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       if (!s.length) return respond({ ok: false, error: "unauthorized" }, 401);
       const since = Date.now() - FEED_DAYS * 86400000;
       const rows = await sql`select msg_id, ts, type, message, sender, group_id, user_id, quote_token, quoted_id
-                             from line_messages where ts >= ${since} order by ts limit 3000`;
+                             from line_inbox where ts >= ${since} order by ts limit 3000`;
       return respond({ ok: true, rows });
     }
 
@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     if (!(await validSignature(raw, req.headers.get("x-line-signature") || ""))) return respond({ ok: false }, 401);
     let body: { events?: Record<string, any>[] } = {};
     try { body = JSON.parse(raw); } catch { return respond({ ok: false }, 400); }
+    if (!(body.events || []).length) return respond({ ok: true }); // ปุ่ม Verify ของ LINE ส่ง events ว่าง
     const tag = "@sofia alvarez";
     for (const ev of body.events || []) {
       if (ev.type !== "message" || ev.source?.type !== "group") continue;
@@ -76,12 +77,12 @@ Deno.serve(async (req) => {
       const groupId = String(ev.source.groupId || ""), userId = String(ev.source.userId || "");
       const text = m.type === "text" ? String(m.text || "") : String(m.id || "");
       const type = m.type === "image" ? "IMAGE" : (!text.toLowerCase().includes(tag) && !m.quotedMessageId && DONE_RE.test(text) ? "DONE" : "TEXT");
-      await sql`insert into line_messages (msg_id, ts, type, message, sender, group_id, user_id, quote_token, quoted_id)
+      await sql`insert into line_inbox (msg_id, ts, type, message, sender, group_id, user_id, quote_token, quoted_id)
                 values (${String(m.id)}, ${Number(ev.timestamp) || Date.now()}, ${type}, ${text}, ${await senderName(groupId, userId)},
                         ${groupId}, ${userId}, ${String(m.quoteToken || "")}, ${String(m.quotedMessageId || "")})
                 on conflict (msg_id) do nothing`;
     }
-    await sql`delete from line_messages where ts < ${Date.now() - KEEP_DAYS * 86400000}`;
+    if (Math.random() < 0.05) await sql`delete from line_inbox where ts < ${Date.now() - KEEP_DAYS * 86400000}`; // ล้างของเก่าเป็นครั้งคราว
     return respond({ ok: true });
   } catch (e) {
     console.error(e);
