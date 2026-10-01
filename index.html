@@ -395,6 +395,10 @@ const DEFAULT_SHOPS = [
   ['TikTok','SP'],['TikTok','TJ'],['TikTok','PROSPERSPORT'],['TikTok','PM']
 ];
 const PLATFORMS = ['Shopee','Lazada','TikTok']; // + แพลตฟอร์มอื่นที่มีร้านอยู่ (เพิ่มให้ใน syncPlatforms)
+// แพลตฟอร์มที่ใช้บ่อย — ขึ้นในตัวเลือกตอนเพิ่มร้าน (เป็นกลุ่ม/แท็บเมื่อมีร้านแล้ว)
+const PLATFORM_SUGGEST = ['LINE MyShop', 'LINE MAN', 'ThisShop', 'Thaimart'];
+const PLATFORM_COLOR = {'Shopee':'#ee4d2d', 'Lazada':'#0f146d', 'TikTok':'#000000', 'LINE MyShop':'#06c755', 'LINE MAN':'#00a84f', 'ThisShop':'#f97316', 'Thaimart':'#dc2626'};
+const platColor = pl => PLATFORM_COLOR[pl] || '#64748b';
 function syncPlatforms(db){
   ((db || DB || {}).shops || []).forEach(sh => { const pl = String(sh.platform || '').trim(); if(pl && !PLATFORMS.includes(pl)) PLATFORMS.push(pl); });
 }
@@ -2555,7 +2559,7 @@ function renderShops(){
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="store-plus" class="w-5 h-5 text-brand-600"></i>เพิ่มร้านใหม่</h3>
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div class="space-y-2">
-          <select id="nsPlat" class="input">${PLATFORMS.map(p=>`<option>${esc(p)}</option>`).join('')}<option value="__new">+ แพลตฟอร์มอื่น…</option></select>
+          <select id="nsPlat" class="input">${[...PLATFORMS, ...PLATFORM_SUGGEST.filter(x => !PLATFORMS.includes(x))].map(p=>`<option>${esc(p)}</option>`).join('')}<option value="__new">+ แพลตฟอร์มอื่น…</option></select>
           <input id="nsNewPlat" class="input hidden" maxlength="40" placeholder="ชื่อแพลตฟอร์มใหม่ เช่น Facebook">
         </div>
         <input id="nsCode" class="input font-mono" placeholder="รหัสร้าน เช่น DP">
@@ -2566,7 +2570,7 @@ function renderShops(){
     ${PLATFORMS.map(plat=>{
       const shops=DB.shops.filter(s=>s.platform===plat);
       return `<div class="card p-5">
-        <h3 class="font-bold mb-3 flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:${plat==='Shopee'?'#ee4d2d':plat==='Lazada'?'#0f146d':'#000'}"></span>${plat} (${shops.length})</h3>
+        <h3 class="font-bold mb-3 flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:${platColor(plat)}"></span>${plat} (${shops.length})</h3>
         <div class="flex flex-wrap gap-2">
           ${shops.map(s=>`<div class="flex items-center gap-2 px-3 py-2 rounded-lg border" style="border-color:var(--border);">
             <b class="font-mono text-sm">${esc(s.code)}</b><span class="text-xs text-slate-400">${esc(s.name)}</span>
