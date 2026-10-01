@@ -3073,6 +3073,17 @@ function lineReplyTarget(r){
     (t.line_asks || []).some(a => !a.msg_id && Date.parse(a.at) <= ts && ts - Date.parse(a.at) <= 86400000));
   return cands.sort((a, b) => Math.max(...b.line_asks.map(x => Date.parse(x.at))) - Math.max(...a.line_asks.map(x => Date.parse(x.at))))[0] || null;
 }
+/* คำตอบแบบไม่ได้กด Reply (หรือชีตยังไม่มีคอลัมน์ quoted): ข้อความแรกที่ไม่แท็กใคร จากคนสั่งงาน ในกลุ่มเดิม
+   ภายใน 30 นาทีหลังบอทถามครั้งล่าสุด และงานยังไม่มีคำตอบหลังคำถามนั้น */
+const LINE_ANSWER_MS = 30 * 60 * 1000;
+function lineReplyByTime(r){
+  if(String(r.message).includes('@')) return null;
+  const ts = Number(r.id);
+  const lastAsk = t => Math.max(...(t.line_asks || []).map(a => Date.parse(a.at) || 0));
+  return DB.tasks.filter(t => t.line_group === r.group && t.line_user === r.user && t.status !== 'done' && (t.line_asks || []).length)
+    .filter(t => { const a = lastAsk(t); return a <= ts && ts - a <= LINE_ANSWER_MS && !(t.line_replies || []).some(x => Date.parse(x.at) >= a); })
+    .sort((a, b) => lastAsk(b) - lastAsk(a))[0] || null;
+}
 function lineImageTarget(r){
   const ts = Number(r.id);
   const last = x => Math.max(Date.parse(x.created_at), ...(x.images || []).map(im => Date.parse(im.at) || 0).filter(v => v <= ts));
@@ -3413,8 +3424,8 @@ async function pollLineLive(){
     /* คำตอบของ "ถามกลับ": คนในกลุ่มกด Reply ข้อความคำถามของบอท → เก็บเป็นคำตอบในงาน
        จับคู่ด้วย id ข้อความบอท (msg_id) · คำถามเก่าที่ไม่มี msg_id: Reply จากคนสั่งงานในกลุ่มเดียวกันภายใน 24 ชม. หลังถาม */
     for(const r of rows){
-      if(r.type === 'IMAGE' || !r.quoted || !r.message) continue;
-      const t = lineReplyTarget(r);
+      if(r.type === 'IMAGE' || !r.message) continue;
+      const t = r.quoted ? lineReplyTarget(r) : lineReplyByTime(r);
       if(!t || (t.line_replies || []).some(x => x.id === r.id)) continue;
       const at = new Date(Number(r.id)).toISOString();
       t.line_replies = [...(t.line_replies || []), {id: r.id, at, text: r.message, sender: r.sender || ''}];
