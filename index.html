@@ -766,8 +766,7 @@ const NAV = [
   {id:'tiktokjobs',label:'ส่งงาน TikTok',icon:'video', admin:false},
   {id:'skulist',   label:'รายการ SKU',   icon:'list',          admin:false},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true},
-  {id:'tasks',     label:'ติดตามงาน',    icon:'list-todo',     admin:false},
-  {id:'campaigns', label:'วิดีโอแคมเปญ', icon:'clapperboard',  admin:false},
+  {id:'tasks',     label:'งาน',          icon:'list-todo',     admin:false}, // แท็บ: งานทั่วไป / วิดีโอแคมเปญ
   {id:'gallery',   label:'คลังรูป',      icon:'images',        admin:false},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',admin:false},
   {id:'users',     label:'จัดการ User',  icon:'users',         admin:true},
@@ -780,7 +779,8 @@ function navBadgeCount(id){
   if(!DB || !currentUser) return 0;
   if(id === 'importfix') return openImportFailures().length;
   if(id === 'tasks'){ // User: งานของฉันที่ยังไม่เสร็จ · Admin: งานที่รอมอบหมาย
-    return (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length;
+    return (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length
+      + navBadgeCount('campaigns');
   }
   if(id === 'campaigns'){ // ร้านในแคมเปญเดือนนี้ที่ยังไม่กด "ทำแล้ว" (แดงค้างจนกว่าจะทำเสร็จ)
     return campaignTargets(monthNow()).filter(x => !x.c.done_at).length;
@@ -791,7 +791,8 @@ function renderNav(){
   const el = $('#navMenu');
   el.innerHTML = NAV.filter(n=>!n.admin || isAdmin()).map(n=>{
     const cnt = navBadgeCount(n.id);
-    return '<div class="nav-item '+(currentView===n.id?'active':'')+'" data-nav="'+n.id+'">'+
+    const on = currentView === n.id || (n.id === 'tasks' && currentView === 'campaigns');
+    return '<div class="nav-item '+(on?'active':'')+'" data-nav="'+n.id+'">'+
     '<i data-lucide="'+n.icon+'" class="w-4.5 h-4.5" style="width:18px;height:18px;"></i><span class="flex-1">'+n.label+'</span>'+
     (cnt ? '<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num min-w-[18px] text-center">'+(cnt > 99 ? '99+' : cnt)+'</span>' : '')+'</div>';
   }).join('');
@@ -801,7 +802,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'ติดตามงาน', campaigns:'วิดีโอแคมเปญ', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -2603,6 +2604,15 @@ function nextNineAmBangkok(){
   const bkk = new Date(Date.now() + 7 * 3600e3);
   return new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate() + 1, 2, 0, 0)).toISOString();
 }
+/* หน้า "งาน" มี 2 แท็บ: งานทั่วไป (tasks) · วิดีโอแคมเปญ (campaigns) */
+function workTabsHtml(active){
+  const nTask = (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length;
+  const nCamp = navBadgeCount('campaigns');
+  const tab = (id, icon, label, n) => `<button class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${active === id ? 'bg-white shadow text-brand-700' : 'text-slate-500 hover:text-slate-700'}" data-work-tab="${id}">
+      <i data-lucide="${icon}" class="w-4 h-4"></i>${label}${n ? `<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num">${n}</span>` : ''}</button>`;
+  return `<div class="inline-flex gap-1 p-1 rounded-xl bg-slate-100">${tab('tasks', 'list-todo', 'งานทั่วไป', nTask)}${tab('campaigns', 'clapperboard', 'วิดีโอแคมเปญ', nCamp)}</div>`;
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-work-tab]'); if(b && b.dataset.workTab !== currentView) navTo(b.dataset.workTab); });
 function renderCampaigns(){
   if(!campState.month) campState.month = monthNow();
   const m = campState.month, targets = campaignTargets(m);
@@ -2612,6 +2622,7 @@ function renderCampaigns(){
   try{ localStorage.setItem(campSeenKey(), nowISO()); }catch(e){} // เปิดดูแล้ว → เลิกแจ้งเตือนสีแดง
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    ${workTabsHtml('campaigns')}
     <div class="card p-4 flex flex-wrap items-center gap-3">
       <div class="flex items-center gap-1">
         <button class="btn btn-ghost btn-sm" data-camp-month="${shiftMonth(m, -1)}" title="เดือนก่อน"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
@@ -2669,7 +2680,7 @@ alp</pre></div>
 }
 /* ข้อความ LINE แคมเปญ: /VDO/ ตั้งจำนวน · /RVDO/ ลงไปแล้ว · /DVDO/ ลบ  (คืนค่า [{code, n, shop}] ) */
 /* คำสั่ง LINE ตั้งเองได้ที่ Settings (เก็บใน DB.meta.line_cmds) */
-const LINE_CMD_DEFAULT = {tag:'Sofia Alvarez', vdo:'VDO', rvdo:'RVDO', dvdo:'DVDO'};
+const LINE_CMD_DEFAULT = {tag:'Sofia Alvarez', vdo:'VDO', rvdo:'RVDO', dvdo:'DVDO', img:'รูป'};
 function lineCmds(){
   const c = (typeof DB !== 'undefined' && DB && DB.meta && DB.meta.line_cmds) || {}, o = {};
   Object.keys(LINE_CMD_DEFAULT).forEach(k => { o[k] = String(c[k] || '').trim() || LINE_CMD_DEFAULT[k]; });
@@ -2803,6 +2814,7 @@ function renderTasks(){
   const users = DB.users.filter(u => u.active);
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    ${workTabsHtml('tasks')}
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
       ${cards.map(([k,label,cls,color]) => `<button class="card stat-card ${cls} p-4 text-left ${taskState.filter===k?'ring-2 ring-teal-500':''}" data-task-filter="${k}">
         <b class="block text-2xl badge-num ${color}">${c[k]}</b><span class="text-sm text-slate-500">${label}</span></button>`).join('')}
@@ -2826,6 +2838,14 @@ function renderTasks(){
     </div>
     <div class="text-xs text-slate-500 flex items-center gap-1.5"><span id="lineLiveDot" class="inline-block w-2 h-2 rounded-full ${lineLive.ok===true?'bg-green-500':lineLive.ok===false?'bg-red-500':'bg-slate-300'}"></span>LINE สด · <span id="lineLiveTime">${esc(lineLive.msg)}</span></div>
     <div id="taskList" class="space-y-2">${renderTaskList()}</div>
+    ${(() => { const lc = lineCmds(), row = (cmd, what) => `<div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3"><code class="font-mono text-xs bg-slate-50 rounded px-2 py-1 sm:w-80 shrink-0">${cmd}</code><span>${what}</span></div>`;
+      return `<details class="card p-4 text-sm text-slate-600" style="outline:none"><summary class="font-semibold text-slate-700 cursor-pointer flex items-center gap-2 select-none" style="outline:none;list-style:none"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>คำสั่งในกลุ่ม LINE</summary>
+      <div class="space-y-2 mt-3">
+        ${row(`@${esc(lc.tag)} ข้อความงาน`, '<b>งาน</b> — ส่งรูปตามภายใน 3 นาที รูปแนบในงาน')}
+        ${row(`@${esc(lc.tag)} /DP/ ข้อความงาน`, '<b>งานของร้าน DP</b> — /ร้าน/ หมายถึงรหัสร้านเสมอ')}
+        ${row(`@${esc(lc.tag)} /${esc(lc.vdo)}/ alp 32`, '<b>วิดีโอแคมเปญ</b> — ดูแท็บวิดีโอแคมเปญ')}
+        ${row(`@${esc(lc.tag)} /${esc(lc.img)}/ ชื่อหมวด`, '<b>เก็บรูปอย่างเดียว</b> — ส่งรูปตาม เข้าคลังรูป ไม่สร้างงาน')}
+      </div></details>`; })()}
     <div class="flex flex-wrap gap-2 justify-center pt-2">
       <label class="btn btn-ghost btn-sm cursor-pointer" title="นำเข้าไฟล์ JSON ที่สำรองจากแอป 'ติดตามงาน' ตัวเดิม"><i data-lucide="upload" class="w-3.5 h-3.5"></i>นำเข้าจากแอปติดตามงานเดิม<input type="file" id="taskImport" accept=".json" class="hidden"></label>
       ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-task-clear-done><i data-lucide="eraser" class="w-3.5 h-3.5"></i>ลบงานที่เสร็จแล้ว</button>` : ''}
@@ -2965,12 +2985,13 @@ function recentLineTasks(r){
   const batch = own.reduce((a, b) => Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a).line_batch;
   return DB.tasks.filter(t => t.line_batch === batch);
 }
-/* "@บอท /หมวด/" อย่างเดียว (ไม่มีข้อความอื่น) = เก็บรูปที่ส่งตามมาเข้าคลังรูปหมวดนั้น ไม่สร้างงาน */
+/* "@บอท /รูป/ ชื่อหมวด" = เก็บรูปที่ส่งตามมาเข้าคลังรูปหมวดนั้น ไม่สร้างงาน (คืน null ถ้าไม่ใช่คำสั่งนี้)
+   ข้อความแท็กบอทอื่นๆ ทั้งหมดเป็นงาน · /ร้าน/ = ร้านเสมอ */
 function lineAlbumCategory(msg){
-  if(!lineTagsTarget(msg)) return '';
+  if(!lineTagsTarget(msg)) return null;
   const rest = String(msg).replace(new RegExp('@' + reEsc(lineCmds().tag), 'ig'), ' ').trim();
-  const m = rest.match(/^\/([^\/\n]+)\/$/);
-  return m ? m[1].trim() : '';
+  const m = rest.match(new RegExp('^/' + reEsc(lineCmds().img) + '/\\s*([\\s\\S]*)$', 'i'));
+  return m ? m[1].replace(/\s+/g, ' ').trim().slice(0, 40) : null;
 }
 /* รูปจากกลุ่ม → งาน หรืออัลบั้ม ของคนเดิมในกลุ่มเดิม
    งาน: ห่างข้อความไม่เกิน 3 นาที (รูปก่อนหรือหลังก็ได้) · อัลบั้ม: ห่างจากคำสั่งหรือรูปก่อนหน้าในอัลบั้มไม่เกิน 3 นาที (ส่งรูปต่อกันได้เรื่อยๆ) */
@@ -3146,7 +3167,7 @@ function renderGallery(){
           </div>
         </div>
       </div>`).join('')}</div>`
-    : `<div class="card p-10 text-center text-slate-400">${all.length ? 'ไม่พบรูปที่ตรงกับตัวกรอง' : 'ยังไม่มีรูป — ในกลุ่ม LINE ส่ง “@' + esc(lineCmds().tag) + ' /ชื่อหมวด/” แล้วส่งรูปตามมา รูปจะเข้าหมวดนั้นที่นี่'}</div>`}
+    : `<div class="card p-10 text-center text-slate-400">${all.length ? 'ไม่พบรูปที่ตรงกับตัวกรอง' : 'ยังไม่มีรูป — ในกลุ่ม LINE ส่ง “@' + esc(lineCmds().tag) + ' /' + esc(lineCmds().img) + '/ ชื่อหมวด” แล้วส่งรูปตามมา หรือกด + เพิ่มรูป'}</div>`}
   </div>`;
   if(window.lucide) lucide.createIcons();
   if(pending) loadTaskImages();
@@ -3244,8 +3265,8 @@ async function pollLineLive(){
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
       }
-      const albumCat = r.type !== 'DONE' ? lineAlbumCategory(r.message) : '';
-      if(albumCat){
+      const albumCat = r.type !== 'DONE' ? lineAlbumCategory(r.message) : null;
+      if(albumCat !== null){
         DB.albums = DB.albums || [];
         if(!DB.albums.some(a => a.id === 'album-' + r.id)){
           const at = new Date(Number(r.id)).toISOString();
@@ -3519,15 +3540,15 @@ document.addEventListener('click', e => {
     delete DB.meta.line_cmds;
   }else{
     const clean = v => String(v || '').trim().replace(/^[@\/]+|\/+$/g, '').trim();
-    const c = {tag: clean($('#lcTag').value), vdo: clean($('#lcVdo').value), rvdo: clean($('#lcRvdo').value), dvdo: clean($('#lcDvdo').value)};
-    const words = [c.vdo || LINE_CMD_DEFAULT.vdo, c.rvdo || LINE_CMD_DEFAULT.rvdo, c.dvdo || LINE_CMD_DEFAULT.dvdo].map(x => x.toLowerCase());
-    if(new Set(words).size < 3){ toast('คำสั่งแคมเปญ 3 ช่องต้องไม่ซ้ำกัน', 'error'); return; }
-    if([c.vdo, c.rvdo, c.dvdo].some(x => /[\s\/]/.test(x))){ toast('คำสั่งห้ามมีช่องว่างหรือ /', 'error'); return; }
+    const c = {tag: clean($('#lcTag').value), vdo: clean($('#lcVdo').value), rvdo: clean($('#lcRvdo').value), dvdo: clean($('#lcDvdo').value), img: clean($('#lcImg').value)};
+    const words = ['vdo', 'rvdo', 'dvdo', 'img'].map(k => (c[k] || LINE_CMD_DEFAULT[k]).toLowerCase());
+    if(new Set(words).size < words.length){ toast('คำสั่งแต่ละช่องต้องไม่ซ้ำกัน', 'error'); return; }
+    if([c.vdo, c.rvdo, c.dvdo, c.img].some(x => /[\s\/]/.test(x))){ toast('คำสั่งห้ามมีช่องว่างหรือ /', 'error'); return; }
     if(DB.shops.some(sh => words.includes(String(sh.code).toLowerCase()))){ toast('คำสั่งซ้ำกับรหัสร้าน — ใช้คำอื่น', 'error'); return; }
     DB.meta.line_cmds = c;
   }
   const lc = lineCmds();
-  logHistory('line_cmds', '@' + lc.tag + ' · /' + lc.vdo + '/ /' + lc.rvdo + '/ /' + lc.dvdo + '/');
+  logHistory('line_cmds', '@' + lc.tag + ' · /' + lc.vdo + '/ /' + lc.rvdo + '/ /' + lc.dvdo + '/ /' + lc.img + '/');
   saveDB(); toast('บันทึกคำสั่ง LINE แล้ว'); renderSettings();
 });
 function renderSettings(){
@@ -3574,6 +3595,7 @@ function renderSettings(){
         ${f('lcVdo', 'vdo', 'แคมเปญวิดีโอ: ตั้งจำนวน', 'เช่น /' + esc(lc.vdo) + '/ alp 32')}
         ${f('lcRvdo', 'rvdo', 'แคมเปญวิดีโอ: ลงไปแล้วกี่ตัว', 'เช่น /' + esc(lc.rvdo) + '/ alp 6')}
         ${f('lcDvdo', 'dvdo', 'แคมเปญวิดีโอ: ลบร้าน', 'เช่น /' + esc(lc.dvdo) + '/ alp')}
+        ${f('lcImg', 'img', 'เก็บรูปเข้าคลังรูป (ไม่สร้างงาน)', 'เช่น /' + esc(lc.img) + '/ สินค้าใหม่ แล้วส่งรูปตาม')}
       </div>
       <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mt-3">ถ้าเปลี่ยนชื่อบอท ต้องแก้ตัวกรอง “@${esc(lc.tag)}” ใน Make ให้ตรงด้วย ไม่งั้นข้อความที่แท็กเฉยๆ จะไม่ถูกบันทึก</p>
       <div class="flex items-center gap-2 mt-3"><button id="lcSave" class="btn btn-primary"><i data-lucide="save" class="w-4 h-4"></i>บันทึกคำสั่ง</button><button id="lcReset" class="btn btn-ghost">คืนค่าเริ่มต้น</button></div>
