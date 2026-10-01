@@ -2965,12 +2965,14 @@ function recentLineTasks(r){
   const batch = own.reduce((a, b) => Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a).line_batch;
   return DB.tasks.filter(t => t.line_batch === batch);
 }
-/* "@บอท /หมวด/" อย่างเดียว (ไม่มีข้อความอื่น) = เก็บรูปที่ส่งตามมาเข้าคลังรูปหมวดนั้น ไม่สร้างงาน */
+/* แท็กบอทโดยไม่มีข้อความงาน = เก็บรูปที่ส่งตามมาเข้าคลังรูป ไม่สร้างงาน
+   "@บอท /หมวด/" → หมวดนั้น · "@บอท" เฉยๆ → ไม่ระบุหมวด ('')  · คืน null ถ้าเป็นข้อความงาน */
 function lineAlbumCategory(msg){
-  if(!lineTagsTarget(msg)) return '';
+  if(!lineTagsTarget(msg)) return null;
   const rest = String(msg).replace(new RegExp('@' + reEsc(lineCmds().tag), 'ig'), ' ').trim();
+  if(!rest) return '';
   const m = rest.match(/^\/([^\/\n]+)\/$/);
-  return m ? m[1].trim() : '';
+  return m ? m[1].trim() : null;
 }
 /* รูปจากกลุ่ม → งาน หรืออัลบั้ม ของคนเดิมในกลุ่มเดิม
    งาน: ห่างข้อความไม่เกิน 3 นาที (รูปก่อนหรือหลังก็ได้) · อัลบั้ม: ห่างจากคำสั่งหรือรูปก่อนหน้าในอัลบั้มไม่เกิน 3 นาที (ส่งรูปต่อกันได้เรื่อยๆ) */
@@ -3125,6 +3127,16 @@ async function pollLineLive(){
     { const before = DB.tasks.length;
       DB.tasks = DB.tasks.filter(t => !(t.source === 'line' && campTagRe().test(t.line_text || '')));
       if(DB.tasks.length !== before) changed = true; }
+    // งานที่สร้างจากการแท็กเฉยๆ / แท็ก + /หมวด/ (ก่อนมีคลังรูป) → ย้ายเป็นอัลบั้มในคลังรูป
+    DB.tasks.filter(t => t.source === 'line' && t.line_text && !(t.line_extra_ids || []).length && lineAlbumCategory(t.line_text) !== null)
+      .forEach(t => {
+        DB.albums = DB.albums || [];
+        const id = 'album-' + String(t.line_batch || t.id).replace(/^line-/, '');
+        if(!DB.albums.some(a => a.id === id))
+          DB.albums.push({id, category: lineAlbumCategory(t.line_text), line_group: t.line_group, line_user: t.line_user, line_sender: t.line_sender, images: t.images || [], created_at: t.created_at, updated_at: nowISO()});
+        DB.tasks = DB.tasks.filter(x => x !== t);
+        changed = true;
+      });
     // งาน LINE ที่สร้างก่อนมีระบบต่อท้าย: ให้ batch = id ของตัวเอง จะได้รับข้อความต่อท้ายได้
     DB.tasks.forEach(t => { if(t.source === 'line' && !t.line_batch && /^line-\d+$/.test(t.id)){ t.line_batch = t.id; changed = true; } });
     rows.forEach(r => {
@@ -3146,8 +3158,8 @@ async function pollLineLive(){
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
       }
-      const albumCat = r.type !== 'DONE' ? lineAlbumCategory(r.message) : '';
-      if(albumCat){
+      const albumCat = r.type !== 'DONE' ? lineAlbumCategory(r.message) : null;
+      if(albumCat !== null){
         DB.albums = DB.albums || [];
         if(!DB.albums.some(a => a.id === 'album-' + r.id)){
           const at = new Date(Number(r.id)).toISOString();
