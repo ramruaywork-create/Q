@@ -2975,7 +2975,7 @@ const taskShopLabel = t => { const s = taskShop(t); return s ? s.code : (t.shop_
 const LINE_FEED_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/line-webhook';
 const LINE_LIVE_SHEET_ID = '1a9i7Q-liFcLHIhu6VXdynHy2yrrs1YpUGxXxKx7pnyE';
 const LINE_LIVE_SHEET = 'Untitled';
-const LINE_POLL_MS = 30000;
+const LINE_POLL_MS = 15000;
 const lineTagsTarget = msg => String(msg || '').toLowerCase().includes('@' + lineCmds().tag.toLowerCase()); // รับเฉพาะข้อความที่แท็กบอท
 const lineLive = {ok:null, msg:'กำลังเชื่อมต่อ…', timer:null, busy:false};
 let gvizSeq = 0;
@@ -3344,7 +3344,7 @@ async function pollLineLive(){
       const fr = await fetch(LINE_FEED_URL + '?a=feed', {cache: 'no-store', headers: {'X-Session': getToken()}});
       const fj = fr.ok ? await fr.json() : null;
       rows = ((fj && fj.rows) || []).map(m => ({id: String(m.ts), type: m.type, title: m.type === 'DONE' ? m.message : '', person: '', due: '', sender: m.sender, message: m.message,
-        group: m.group_id, user: m.user_id, quote: m.quote_token, quoted: m.quoted_id}));
+        group: m.group_id, user: m.user_id, quote: m.quote_token, quoted: m.quoted_id, url: m.url || ''}));
     }catch(e){}
     if(!rows.length){
       const json = await gviz(LINE_LIVE_SHEET_ID, LINE_LIVE_SHEET);
@@ -3444,6 +3444,8 @@ async function pollLineLive(){
       changed = true;
       if(!firstRun && visibleTasks().includes(t)) toast((r.sender || 'คนสั่งงาน') + ' ตอบ: ' + r.message.slice(0, 60), 'info');
     }
+    { const urls = new Map(rows.filter(r => r.type === 'IMAGE' && r.url).map(r => [r.message, r.url]));
+      if(urls.size) imageOwners().forEach(o => (o.images || []).forEach(im => { if(!im.url && urls.has(im.id)){ im.url = urls.get(im.id); delete im.gone; o.updated_at = nowISO(); changed = true; } })); }
     /* รูปจากกลุ่ม (แถว IMAGE: message = LINE message id) → แนบกับงานของคนเดิมในกลุ่มเดิม ห่างไม่เกิน 3 นาที
        ส่งรูปก่อนหรือหลังข้อความแท็กก็ได้ · ดูทุกแถว เพราะงานอาจถูกสร้างทีหลังรูป · แต่ละรูปแนบได้ครั้งเดียว */
     for(const r of rows){
@@ -3452,13 +3454,13 @@ async function pollLineLive(){
       if(!target){
         // ไม่ได้ตามหลังคำสั่ง → รูปทั่วไป เก็บ 30 วัน (รอ 3 นาทีก่อน เผื่อข้อความแท็กตามมาทีหลัง)
         const age = Date.now() - Number(r.id);
-        if(age < LINE_FOLLOW_MS || age > LOOSE_KEEP_MS) continue;
+        if(age < 60000 || age > LOOSE_KEEP_MS) continue; // รอ 1 นาที เผื่อข้อความแท็กตามมา
         DB.albums = DB.albums || [];
         const day = localDate(new Date(Number(r.id)).toISOString()), id = 'loose-' + day + '-' + String(r.group || 'x').slice(-8);
         target = DB.albums.find(a => a.id === id);
         if(!target){ const at = new Date(Number(r.id)).toISOString(); target = {id, kind: 'loose', category: '', line_group: r.group, images: [], created_at: at, updated_at: at}; DB.albums.push(target); }
       }
-      target.images = [...(target.images || []), {id: r.message, at: new Date(Number(r.id)).toISOString(), ...(r.user ? {user: r.user} : {})}];
+      target.images = [...(target.images || []), {id: r.message, at: new Date(Number(r.id)).toISOString(), ...(r.user ? {user: r.user} : {}), ...(r.url ? {url: r.url} : {})}];
       const at = new Date(Number(r.id)).toISOString();
       if(String(target.updated_at || '') < at) target.updated_at = at;
       changed = true;
