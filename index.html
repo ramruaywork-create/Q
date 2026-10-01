@@ -3334,7 +3334,8 @@ document.addEventListener('click', e => {
 });
 function renderSettings(){
   $('#view').innerHTML = `
-  <div class="fade-in max-w-2xl mx-auto space-y-4">
+  <div class="fade-in max-w-6xl mx-auto grid grid-cols-1 ${isAdmin() ? 'lg:grid-cols-2' : 'max-w-2xl'} gap-4 items-start">
+   <div class="space-y-4">
     <div class="card p-5">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="key-round" class="w-5 h-5 text-brand-600"></i>เปลี่ยนรหัสผ่าน</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -3350,10 +3351,23 @@ function renderSettings(){
         <button id="expBtn" class="btn btn-ghost"><i data-lucide="download" class="w-4 h-4"></i>Export ข้อมูล (JSON)</button>
         <label class="btn btn-ghost cursor-pointer"><i data-lucide="upload" class="w-4 h-4"></i>Import สำรอง<input type="file" id="impBackup" accept=".json" class="hidden"></label>
       </div>
+    </div>`:''}
+    <div class="card p-5">
+      <h3 class="font-bold text-lg mb-3 flex items-center gap-2 text-progress"><i data-lucide="history" class="w-5 h-5"></i>ประวัติการแก้ไข (ล่าสุด 30 รายการ)</h3>
+      <div class="space-y-2 max-h-[28rem] overflow-y-auto">
+        ${DB.history.slice(0,30).map(h=>`<div class="flex items-start gap-3 text-xs p-2 rounded-lg bg-slate-50">
+          <span class="text-slate-400 font-mono flex-shrink-0">${localDateTime(h.at)}</span>
+          <span class="text-slate-500 flex-shrink-0">${esc(userById(h.user_id)?.name||'-')}</span>
+          <span class="font-mono text-brand-700">${esc(h.action)}</span>
+          <span class="text-slate-600 flex-1">${esc(h.detail)}</span>
+        </div>`).join('')||'<p class="text-sm text-slate-400 text-center py-4">ยังไม่มีประวัติ</p>'}
+      </div>
     </div>
+   </div>
+   ${isAdmin()?`<div class="space-y-4">
     ${(() => { const lc = lineCmds(); const f = (id, k, label, hint) => `<label class="block text-sm text-slate-600">${label}
-          <div class="flex items-center mt-1"><span class="text-slate-400 font-mono mr-1">${k === 'tag' ? '@' : '/'}</span><input id="${id}" class="input font-mono" maxlength="40" value="${esc(lc[k])}" placeholder="${esc(LINE_CMD_DEFAULT[k])}">${k === 'tag' ? '' : '<span class="text-slate-400 font-mono ml-1">/</span>'}</div>
-          <span class="text-xs text-slate-400">${hint}</span></label>`;
+          <div class="relative mt-1"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono pointer-events-none">${k === 'tag' ? '@' : '/'}</span><input id="${id}" class="input font-mono" style="padding-left:1.75rem;${k === 'tag' ? '' : 'padding-right:1.75rem;'}" maxlength="40" value="${esc(lc[k])}" placeholder="${esc(LINE_CMD_DEFAULT[k])}">${k === 'tag' ? '' : '<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono pointer-events-none">/</span>'}</div>
+          <span class="text-xs text-slate-400 mt-1 block">${hint}</span></label>`;
       return `<div class="card p-5">
       <h3 class="font-bold text-lg mb-1 flex items-center gap-2"><i data-lucide="message-circle" class="w-5 h-5" style="color:#06c755"></i>คำสั่ง LINE</h3>
       <p class="text-xs text-slate-500 mb-3">คำที่ใช้สั่งงานในกลุ่ม LINE · ตัวพิมพ์เล็ก/ใหญ่ถือว่าเหมือนกัน · ปล่อยว่าง = ใช้ค่าเริ่มต้น</p>
@@ -3376,19 +3390,7 @@ function renderSettings(){
         <div class="flex items-center gap-2"><button id="rrSync" class="btn btn-primary"><i data-lucide="refresh-cw" class="w-4 h-4"></i>ดึงสินค้า</button><span id="rrStatus" class="text-xs text-slate-500"></span></div>
       </div>
     </div>
-    `:''}
-    <div class="card p-5">
-      <h3 class="font-bold text-lg mb-3 flex items-center gap-2 text-progress"><i data-lucide="history" class="w-5 h-5"></i>ประวัติการแก้ไข (ล่าสุด 30 รายการ)</h3>
-      <div class="space-y-2 max-h-64 overflow-y-auto">
-        ${DB.history.slice(0,30).map(h=>`<div class="flex items-start gap-3 text-xs p-2 rounded-lg bg-slate-50">
-          <span class="text-slate-400 font-mono flex-shrink-0">${localDateTime(h.at)}</span>
-          <span class="text-slate-500 flex-shrink-0">${esc(userById(h.user_id)?.name||'-')}</span>
-          <span class="font-mono text-brand-700">${esc(h.action)}</span>
-          <span class="text-slate-600 flex-1">${esc(h.detail)}</span>
-        </div>`).join('')||'<p class="text-sm text-slate-400 text-center py-4">ยังไม่มีประวัติ</p>'}
-      </div>
-    </div>
-    ${isAdmin()?`    <div class="card p-5 border-2" style="border-color:#fecaca;">
+    <div class="card p-5 border-2" style="border-color:#fecaca;">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2 text-red-600"><i data-lucide="alert-triangle" class="w-5 h-5"></i>พื้นที่อันตราย</h3>
       <div class="flex flex-wrap gap-2">
         <button id="clearDemo" class="btn btn-ghost"><i data-lucide="eraser" class="w-4 h-4"></i>ล้างข้อมูลทดสอบ (งานตัวอย่าง)</button>
@@ -3405,7 +3407,8 @@ function renderSettings(){
           <button id="resetStatus" class="btn btn-danger"><i data-lucide="rotate-ccw" class="w-4 h-4"></i>รีเซ็ตสถานะ</button>
         </div>
       </div>
-    </div>`:''}
+    </div>
+   </div>`:''}
   </div>`;
   if(window.lucide) lucide.createIcons();
 }
