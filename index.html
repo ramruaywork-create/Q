@@ -1566,6 +1566,66 @@ document.addEventListener('click', e => {
   checkState.selected.clear();
   renderCheck();
 });
+/* ---------- ตารางไซส์ต่อ SKU: รูปเก็บในอัลบั้ม "ตารางไซส์" ของคลังรูป (ไม่ถูกลบอัตโนมัติ) · p.size_chart = {id, url} ---------- */
+const SIZE_ALBUM_ID = 'album-sizechart';
+const sizeChartImages = () => ((DB.albums || []).find(a => a.id === SIZE_ALBUM_ID)?.images || []).filter(im => im.url);
+function sizeChartCell(p){
+  const sc = p.size_chart;
+  if(sc && sc.url) return `<span class="inline-flex items-center gap-1"><button type="button" class="block w-12 h-9 rounded-md overflow-hidden border border-slate-200 bg-white" data-img-view="${esc(sc.url)}" title="ดูตารางไซส์"><img src="${esc(sc.url)}" alt="ตารางไซส์" loading="lazy" class="w-full h-full object-cover"></button>${isAdmin() ? `<button type="button" class="text-slate-400 hover:text-brand-600 p-1" data-size-set="${p.id}" title="เปลี่ยนตารางไซส์"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>` : ''}</span>`;
+  return isAdmin() ? `<button type="button" class="text-xs text-brand-600 hover:underline" data-size-set="${p.id}">+ ใส่</button>` : '<span class="text-xs text-slate-300">-</span>';
+}
+function openSizeChartPicker(p){
+  const base = normalizeBaseSku ? normalizeBaseSku(p.sku) : p.sku;
+  const imgs = sizeChartImages();
+  const m = document.createElement('div');
+  m.className = 'modal-bg';
+  m.innerHTML = `<div class="card w-full max-w-2xl p-5 fade-in">
+    <h3 class="text-lg font-bold mb-1">ตารางไซส์ · <span class="font-mono text-brand-700">${esc(p.sku)}</span></h3>
+    <p class="text-xs text-slate-500 mb-3">เลือกตารางที่มีอยู่ หรืออัปโหลดรูปใหม่ · รูปจะอยู่ในคลังรูปหมวด “ตารางไซส์”</p>
+    ${imgs.length ? `<div class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto mb-3">${imgs.map(im => `
+      <button type="button" class="rounded-lg overflow-hidden border-2 ${p.size_chart && p.size_chart.id === im.id ? 'border-brand-600' : 'border-slate-200'} bg-white text-left" data-size-pick="${esc(im.id)}">
+        <img src="${esc(im.url)}" alt="" class="w-full h-24 object-contain bg-slate-50"><div class="text-[11px] text-slate-500 px-1.5 py-1 truncate">${esc(im.note || '')}</div></button>`).join('')}</div>` : ''}
+    <label class="block text-sm text-slate-600">อัปโหลดรูปใหม่<input type="file" accept="image/*" class="input mt-1" data-size-file></label>
+    <label class="flex items-center gap-2 text-sm text-slate-600 mt-3"><input type="checkbox" data-size-all checked>ใช้กับทุก SKU ที่ขึ้นต้นด้วย <b class="font-mono">${esc(base)}</b></label>
+    <p class="text-xs text-slate-500 mt-2 min-h-[1rem]" data-size-status></p>
+    <div class="flex justify-between gap-2 mt-4">
+      ${p.size_chart ? '<button class="btn btn-danger btn-sm" data-size-clear>เอาออก</button>' : '<span></span>'}
+      <button class="btn btn-ghost" data-size-close>ปิด</button>
+    </div></div>`;
+  const targets = () => m.querySelector('[data-size-all]').checked ? DB.products.filter(x => (normalizeBaseSku ? normalizeBaseSku(x.sku) : x.sku) === base) : [DB.products.find(x => x.id === p.id)].filter(Boolean);
+  const apply = sc => {
+    const list = targets(), now = nowISO();
+    list.forEach(x => { if(sc) x.size_chart = sc; else delete x.size_chart; x.updated_at = now; });
+    logHistory('size_chart', base + ' ' + (sc ? 'ตั้ง' : 'เอาออก') + ' ' + list.length + ' SKU');
+    saveDB(); m.remove(); toast(sc ? 'ตั้งตารางไซส์ ' + list.length + ' SKU แล้ว' : 'เอาตารางไซส์ออกแล้ว'); renderCurrentViewQuiet();
+  };
+  m.addEventListener('click', e => {
+    if(e.target === m || e.target.closest('[data-size-close]')){ m.remove(); return; }
+    if(e.target.closest('[data-size-clear]')){ apply(null); return; }
+    const pick = e.target.closest('[data-size-pick]');
+    if(pick){ const im = sizeChartImages().find(x => x.id === pick.dataset.sizePick); if(im) apply({id: im.id, url: im.url}); }
+  });
+  m.querySelector('[data-size-file]').addEventListener('change', async e => {
+    const f = e.target.files[0]; if(!f) return;
+    if(!apiMode){ toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
+    const st = m.querySelector('[data-size-status]'); st.textContent = 'กำลังอัปโหลด…'; e.target.disabled = true;
+    try{
+      const {j} = await api('upload_image', {type: 'image/jpeg', data: await shrinkImage(f)});
+      if(!j.ok){ st.textContent = j.error || 'อัปโหลดไม่สำเร็จ'; e.target.disabled = false; return; }
+      DB.albums = DB.albums || [];
+      let al = DB.albums.find(a => a.id === SIZE_ALBUM_ID);
+      if(!al){ al = {id: SIZE_ALBUM_ID, category: 'ตารางไซส์', images: [], created_at: nowISO(), updated_at: nowISO()}; DB.albums.push(al); }
+      const im = {id: j.id, url: j.url, at: nowISO(), by: currentUser.id, note: base};
+      al.images = [...(al.images || []), im]; al.updated_at = nowISO();
+      apply({id: im.id, url: im.url});
+    }catch(err){ st.textContent = 'อัปโหลดไม่สำเร็จ'; e.target.disabled = false; }
+  });
+  document.body.appendChild(m);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-size-set]'); if(!b || !isAdmin()) return;
+  const p = DB.products.find(x => x.id === b.dataset.sizeSet); if(p) openSizeChartPicker(p);
+});
 function renderCheck(){
   const visibleShopIds = getAssignedShopIds(currentUser);
   const shopsOf = plat => DB.shops.filter(s=>s.active!==false && s.platform===plat && (isAdmin() || visibleShopIds.includes(s.id)));
@@ -1642,11 +1702,11 @@ function renderCheck(){
       <div class="overflow-x-auto">
       <table class="data">
         <thead><tr>
-          <th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
+          <th style="width:36px;"></th><th>SKU</th><th>ตารางไซส์</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
+          ${products.length===0?'<tr><td colspan="9" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
           products.map(p=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
@@ -1655,6 +1715,7 @@ function renderCheck(){
             return `<tr>
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
               <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
+              <td>${sizeChartCell(p)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
               <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
               <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
