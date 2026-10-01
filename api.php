@@ -21,7 +21,7 @@ session_start();
 
 $dataDir = __DIR__ . '/data';
 $csvFile = __DIR__ . '/sku-import.csv';
-$COLLECTIONS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns'];
+$COLLECTIONS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns','albums'];
 $LIMITS = ['history'=>3000, 'import_audits'=>1000];
 
 $DEFAULT_SHOPS = [

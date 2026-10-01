@@ -14,7 +14,7 @@ type Obj = Record<string, any>;
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3 });
 
-const COLLECTIONS = ["users", "shops", "products", "worklogs", "tiktoks", "history", "tiktok_jobs", "sales", "import_audits", "tasks", "campaigns"];
+const COLLECTIONS = ["users", "shops", "products", "worklogs", "tiktoks", "history", "tiktok_jobs", "sales", "import_audits", "tasks", "campaigns", "albums"];
 const LIMITS: Record<string, number> = { history: 3000, import_audits: 1000 };
 const SESSION_DAYS = 30;
 const DEFAULT_SHOPS = [
@@ -53,7 +53,7 @@ function seedDb(): Obj {
     { id: "u4", name: "C", username: "userC", pass: userPass, role: "User", active: true, shop_ids: ["s17", "s18", "s1", "s9", "s15"], created_at: now },
   ];
   const products = PRODUCTS.map(([sku, brand, name], i) => ({ id: "p" + (i + 1), sku, name, brand, created_at: now, active: true }));
-  return { users, shops, products, worklogs: [], tiktoks: [], history: [], tiktok_jobs: [], sales: [], import_audits: [], tasks: [], campaigns: [], meta: {} };
+  return { users, shops, products, worklogs: [], tiktoks: [], history: [], tiktok_jobs: [], sales: [], import_audits: [], tasks: [], campaigns: [], albums: [], meta: {} };
 }
 
 function normalizeUserShopIds(db: Obj) {
@@ -98,7 +98,7 @@ async function sessionUserId(req: Request): Promise<string | null> {
   return rows[0]?.user_id ?? null;
 }
 const activeUser = (db: Obj, id: string | null) => (id ? db.users.find((u: Obj) => u.id === id && u.active) : null) || null;
-/* รูปจาก LINE เก็บใน Storage (public bucket) — ลบอัตโนมัติเมื่อเก่ากว่า 60 วัน ยกเว้นรูปของงานที่ยังไม่เสร็จ หรือเพิ่งเสร็จไม่ถึง 60 วัน */
+/* รูปจาก LINE เก็บใน Storage (public bucket) — ลบอัตโนมัติเมื่อเก่ากว่า 60 วัน ยกเว้นรูปในคลังรูป (อัลบั้ม) รูปของงานที่ยังไม่เสร็จ หรือเพิ่งเสร็จไม่ถึง 60 วัน */
 const IMG_BUCKET = "line-images";
 const IMG_KEEP_DAYS = 60;
 const imgUrl = (name: string) => `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${IMG_BUCKET}/${name}`;
@@ -109,6 +109,7 @@ async function cleanupImages(): Promise<number> {
     const s = new Set<string>();
     for (const t of db.tasks) for (const img of (Array.isArray(t.images) ? t.images : []))
       if (t.status !== "done" || !t.done_at || Date.parse(t.done_at) > cutoff) s.add(String(img.id));
+    for (const a of db.albums) for (const img of (Array.isArray(a.images) ? a.images : [])) s.add(String(img.id));
     return s;
   });
   const old = await sql`select name from storage.objects where bucket_id = ${IMG_BUCKET} and created_at < now() - make_interval(days => ${IMG_KEEP_DAYS})`;
@@ -248,7 +249,7 @@ Deno.serve(async (req) => {
               }
             }
             // งาน: ถ้าในเซิร์ฟเวอร์ใหม่กว่า (เช่น Admin มอบหมายไปแล้ว) ไม่ให้สำเนาเก่าจากอีกเครื่องทับ
-            if ((coll === "tasks" || coll === "campaigns") && i >= 0 && String(list[i].updated_at ?? "") > String(item.updated_at ?? "")) continue;
+            if ((coll === "tasks" || coll === "campaigns" || coll === "albums") && i >= 0 && String(list[i].updated_at ?? "") > String(item.updated_at ?? "")) continue;
             if (i >= 0) list[i] = item; else list.push(item);
           }
           const lim = LIMITS[coll];

@@ -247,7 +247,7 @@ function recoverFromBrowserCheck(){
   log.push(now); try{ sessionStorage.setItem(k, JSON.stringify(log)); sessionStorage.setItem('sku_return_view', currentView || 'dashboard'); }catch(e){}
   location.reload();
 }
-const SYNC_COLLS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns'];
+const SYNC_COLLS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns','albums'];
 let syncSnapshot = null, pushTimer = null, pushing = null, pendingOps = null, retryTimer = null;
 function takeSnapshot(db){
   const snap = {};
@@ -489,7 +489,7 @@ function seedDB(){
 let DB = null;
 function migrateDB(db){
   db.meta = (db.meta && typeof db.meta==='object' && !Array.isArray(db.meta)) ? db.meta : {};
-  ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns'].forEach(c => { if(!Array.isArray(db[c])) db[c] = []; });
+  ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns','albums'].forEach(c => { if(!Array.isArray(db[c])) db[c] = []; });
   db.sales.forEach(r => { if(!r.id) r.id = uid(); });
   db.history.forEach(h => { if(!h.id) h.id = uid(); });
   if(db.history.length > 3000) db.history.length = 3000;
@@ -2965,22 +2965,39 @@ function recentLineTasks(r){
   const batch = own.reduce((a, b) => Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a).line_batch;
   return DB.tasks.filter(t => t.line_batch === batch);
 }
+/* "@บอท /หมวด/" อย่างเดียว (ไม่มีข้อความอื่น) = เก็บรูปที่ส่งตามมาเข้าคลังรูปหมวดนั้น ไม่สร้างงาน */
+function lineAlbumCategory(msg){
+  if(!lineTagsTarget(msg)) return '';
+  const rest = String(msg).replace(new RegExp('@' + reEsc(lineCmds().tag), 'ig'), ' ').trim();
+  const m = rest.match(/^\/([^\/\n]+)\/$/);
+  return m ? m[1].trim() : '';
+}
+/* รูปจากกลุ่ม → งาน หรืออัลบั้ม ของคนเดิมในกลุ่มเดิม
+   งาน: ห่างข้อความไม่เกิน 3 นาที (รูปก่อนหรือหลังก็ได้) · อัลบั้ม: ห่างจากคำสั่งหรือรูปก่อนหน้าในอัลบั้มไม่เกิน 3 นาที (ส่งรูปต่อกันได้เรื่อยๆ) */
 function lineImageTarget(r){
   const ts = Number(r.id);
-  const cands = DB.tasks.filter(t => t.source === 'line' && t.line_group === r.group && t.line_user === r.user && t.line_batch && Math.abs(Date.parse(t.created_at) - ts) <= LINE_FOLLOW_MS);
+  const last = x => Math.max(Date.parse(x.created_at), ...(x.images || []).map(im => Date.parse(im.at) || 0).filter(v => v <= ts));
+  const cands = [
+    ...DB.tasks.filter(t => t.source === 'line' && t.line_group === r.group && t.line_user === r.user && t.line_batch && Math.abs(Date.parse(t.created_at) - ts) <= LINE_FOLLOW_MS)
+      .map(t => ({x: t, at: Date.parse(t.created_at)})),
+    ...(DB.albums || []).filter(a => a.line_group === r.group && a.line_user === r.user && Date.parse(a.created_at) <= ts && ts - last(a) <= LINE_FOLLOW_MS)
+      .map(a => ({x: a, at: last(a)})),
+  ];
   if(!cands.length) return null;
-  const before = cands.filter(t => Date.parse(t.created_at) <= ts);
+  const before = cands.filter(c => c.at <= ts);
   const pool = before.length ? before : cands; // รูปตามหลังข้อความ ก่อน · ไม่มีค่อยดูข้อความที่ตามมา
-  const near = pool.reduce((a, b) => Math.abs(Date.parse(b.created_at) - ts) < Math.abs(Date.parse(a.created_at) - ts) ? b : a);
+  const near = pool.reduce((a, b) => Math.abs(b.at - ts) < Math.abs(a.at - ts) ? b : a).x;
+  if(!near.line_batch) return near; // อัลบั้ม
   const batch = DB.tasks.filter(t => t.line_batch === near.line_batch);
   return batch[batch.length - 1];
 }
+const imageOwners = () => [...DB.tasks, ...(DB.albums || [])];
 /* ดึงรูปจาก LINE มาเก็บใน Supabase (ครั้งเดียวต่อรูป) แล้วจำลิงก์ไว้ในงาน */
 const imgLoading = new Set();
 async function loadTaskImages(){
   if(!apiMode) return;
   const todo = [];
-  visibleTasks().forEach(t => (t.images || []).forEach(im => { if(!im.url && !im.gone && !imgLoading.has(im.id)) todo.push([t, im]); }));
+  [...visibleTasks(), ...(DB.albums || [])].forEach(t => (t.images || []).forEach(im => { if(!im.url && !im.gone && !imgLoading.has(im.id)) todo.push([t, im]); }));
   let changed = false;
   for(const [t, im] of todo.slice(0, 6)){
     imgLoading.add(im.id);
@@ -2995,54 +3012,69 @@ async function loadTaskImages(){
   if(changed){ saveDB(); if((currentView === 'tasks' || currentView === 'gallery') && !isUserBusy()) renderCurrentViewQuiet(); }
 }
 /* ---------- คลังรูป: รูปทั้งหมดจากกลุ่ม LINE (ของงานที่ผู้ใช้คนนี้เห็น) ---------- */
-const galState = {q:'', shop:'', period:'all'};
+const galState = {q:'', cat:'', period:'all'};
 function galleryItems(){
   const out = [];
-  visibleTasks().forEach(t => (t.images || []).forEach(im => out.push({t, im, at: im.at || t.created_at})));
+  visibleTasks().forEach(t => (t.images || []).forEach(im => out.push({t, im, at: im.at || t.created_at, cat: taskShopLabel(t) || '-'})));
+  (DB.albums || []).forEach(a => (a.images || []).forEach(im => out.push({a, im, at: im.at || a.created_at, cat: a.category || '-'})));
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 function renderGallery(){
   const all = galleryItems();
   const q = galState.q.trim().toLowerCase();
   const since = galState.period === 'all' ? '' : galState.period === 'today' ? todayISO() : new Date(Date.now() - (galState.period === '7' ? 7 : 30) * 86400000).toISOString();
-  const rows = all.filter(x => (!galState.shop || (taskShopLabel(x.t) || '-') === galState.shop) &&
+  const rows = all.filter(x => (!galState.cat || x.cat === galState.cat) &&
     (!since || String(x.at) >= since) &&
-    (!q || [x.t.title, x.t.detail, x.t.line_sender, taskShopLabel(x.t)].join(' ').toLowerCase().includes(q)));
-  const shops = [...new Set(all.map(x => taskShopLabel(x.t) || '-'))].sort();
+    (!q || (x.t ? [x.t.title, x.t.detail, x.t.line_sender] : [x.a.line_sender]).concat(x.cat).join(' ').toLowerCase().includes(q)));
+  const cats = [...new Set(all.map(x => x.cat))].sort((a, b) => (a === '-') - (b === '-') || a.localeCompare(b));
+  const catCount = c => all.filter(x => x.cat === c).length;
   const pending = rows.filter(x => !x.im.url && !x.im.gone).length;
   const periods = [['all','ทั้งหมด'],['today','วันนี้'],['7','7 วัน'],['30','30 วัน']];
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
     <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
-      <input id="galQ" class="input lg:max-w-sm" type="search" placeholder="ค้นหาชื่องาน / คนส่ง / ร้าน…" value="${esc(galState.q)}">
-      <select id="galShop" class="input lg:max-w-[12rem]"><option value="">ทุกร้าน</option>${shops.map(x => `<option value="${esc(x)}" ${galState.shop === x ? 'selected' : ''}>${x === '-' ? 'ไม่ระบุร้าน' : esc(x)}</option>`).join('')}</select>
+      <input id="galQ" class="input lg:max-w-sm" type="search" placeholder="ค้นหาหมวด / ชื่องาน / คนส่ง…" value="${esc(galState.q)}">
       <div class="flex gap-1 flex-wrap">${periods.map(([k, l]) => `<button class="btn btn-sm ${galState.period === k ? 'btn-primary' : 'btn-ghost'}" data-gal-period="${k}">${l}</button>`).join('')}</div>
       <span class="text-sm text-slate-500 lg:ml-auto badge-num">${rows.length} รูป${pending ? ' · กำลังโหลด ' + pending : ''}</span>
     </div>
-    ${rows.length ? `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">${rows.map(({t, im, at}) => `
+    <div class="flex gap-1.5 flex-wrap">
+      <button class="btn btn-sm ${!galState.cat ? 'btn-primary' : 'btn-ghost'}" data-gal-cat="">ทุกหมวด <span class="opacity-70 badge-num">${all.length}</span></button>
+      ${cats.map(c => `<button class="btn btn-sm ${galState.cat === c ? 'btn-primary' : 'btn-ghost'}" data-gal-cat="${esc(c)}">${c === '-' ? 'ไม่ระบุหมวด' : esc(c)} <span class="opacity-70 badge-num">${catCount(c)}</span></button>`).join('')}
+    </div>
+    ${rows.length ? `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">${rows.map(({t, a, im, at, cat}) => `
       <div class="card overflow-hidden flex flex-col">
         ${im.url ? `<button type="button" class="block aspect-square bg-slate-100" data-img-view="${esc(im.url)}" title="ดูรูปใหญ่"><img src="${esc(im.url)}" alt="รูปจาก LINE" loading="lazy" class="w-full h-full object-cover" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'w-full h-full flex items-center justify-center text-xs text-slate-400',textContent:'รูปหมดอายุ'}))"></button>`
           : `<div class="aspect-square bg-slate-100 flex flex-col items-center justify-center gap-1 text-slate-400 text-xs"><i data-lucide="${im.gone ? 'image-off' : 'loader'}" class="w-6 h-6"></i>${im.gone ? 'รูปหมดอายุ' : 'กำลังโหลด…'}</div>`}
         <div class="p-2.5 text-xs space-y-1 flex-1 flex flex-col">
-          <div class="font-semibold text-slate-700 text-sm truncate ${t.status === 'done' ? 'line-through text-slate-400' : ''}" title="${esc(t.title)}">${esc(t.title)}</div>
-          <div class="text-slate-400">${esc(localDateTime(at))}${t.line_sender ? ' · ' + esc(t.line_sender) : ''}</div>
+          ${t ? `<div class="font-semibold text-slate-700 text-sm truncate ${t.status === 'done' ? 'line-through text-slate-400' : ''}" title="${esc(t.title)}">${esc(t.title)}</div>`
+              : `<div class="font-semibold text-slate-700 text-sm truncate">${cat === '-' ? 'รูปจาก LINE' : esc(cat)}</div>`}
+          <div class="text-slate-400">${esc(localDateTime(at))}${(t || a).line_sender ? ' · ' + esc((t || a).line_sender) : ''}</div>
           <div class="flex items-center gap-1 mt-auto pt-1">
-            ${taskShopLabel(t) ? `<span class="pill pill-bigseller">${esc(taskShopLabel(t))}</span>` : ''}
-            <button class="ml-auto text-brand-700 hover:underline" data-gal-task="${esc(t.id)}">ดูงาน →</button>
+            ${cat !== '-' ? `<span class="pill pill-bigseller truncate max-w-[60%]">${esc(cat)}</span>` : ''}
+            ${t ? `<button class="ml-auto text-brand-700 hover:underline" data-gal-task="${esc(t.id)}">ดูงาน →</button>`
+                : isAdmin() ? `<button class="ml-auto text-red-500 hover:underline" data-gal-del="${esc(a.id)}|${esc(im.id)}">ลบ</button>` : ''}
           </div>
         </div>
       </div>`).join('')}</div>`
-    : `<div class="card p-10 text-center text-slate-400">${all.length ? 'ไม่พบรูปที่ตรงกับตัวกรอง' : 'ยังไม่มีรูป — ส่งรูปในกลุ่ม LINE ตามหลังข้อความที่แท็กบอท ภายใน 3 นาที รูปจะมาอยู่ที่นี่'}</div>`}
+    : `<div class="card p-10 text-center text-slate-400">${all.length ? 'ไม่พบรูปที่ตรงกับตัวกรอง' : 'ยังไม่มีรูป — ในกลุ่ม LINE ส่ง “@' + esc(lineCmds().tag) + ' /ชื่อหมวด/” แล้วส่งรูปตามมา รูปจะเข้าหมวดนั้นที่นี่'}</div>`}
   </div>`;
   if(window.lucide) lucide.createIcons();
   if(pending) loadTaskImages();
 }
 document.addEventListener('input', e => { if(e.target.id === 'galQ'){ galState.q = e.target.value; const pos = e.target.selectionStart; renderGallery(); const el = $('#galQ'); if(el){ el.focus(); el.setSelectionRange(pos, pos); } } });
-document.addEventListener('change', e => { if(e.target.id === 'galShop'){ galState.shop = e.target.value; renderGallery(); } });
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-gal-period],[data-gal-task]');
+  const b = e.target.closest('[data-gal-period],[data-gal-task],[data-gal-cat],[data-gal-del]');
   if(!b) return;
   if(b.dataset.galPeriod){ galState.period = b.dataset.galPeriod; renderGallery(); return; }
+  if(b.hasAttribute('data-gal-cat')){ galState.cat = b.dataset.galCat; renderGallery(); return; }
+  if(b.dataset.galDel){
+    if(!isAdmin() || !confirm('ลบรูปนี้ออกจากคลังรูป?')) return;
+    const [aid, mid] = b.dataset.galDel.split('|');
+    const al = (DB.albums || []).find(x => x.id === aid); if(!al) return;
+    al.images = (al.images || []).filter(im => im.id !== mid); al.updated_at = nowISO();
+    if(!al.images.length) DB.albums = DB.albums.filter(x => x !== al);
+    saveDB(); renderGallery(); return;
+  }
   const t = DB.tasks.find(x => x.id === b.dataset.galTask); if(!t) return;
   taskState.filter = 'all'; taskState.person = ''; taskState.q = t.title;
   navTo('tasks');
@@ -3114,6 +3146,16 @@ async function pollLineLive(){
         if(res){ changed = true; if(!firstRun) campaignToast(res); }
         continue;
       }
+      const albumCat = r.type !== 'DONE' ? lineAlbumCategory(r.message) : '';
+      if(albumCat){
+        DB.albums = DB.albums || [];
+        if(!DB.albums.some(a => a.id === 'album-' + r.id)){
+          const at = new Date(Number(r.id)).toISOString();
+          DB.albums.push({id: 'album-' + r.id, category: albumCat, line_group: r.group, line_user: r.user, line_sender: r.sender, images: [], created_at: at, updated_at: at});
+          changed = true;
+        }
+        continue;
+      }
       if(r.type !== 'DONE' && lineTagsTarget(r.message)){
         if(DB.tasks.some(t => t.id === 'line-'+r.id)) continue;
         const recent = recentLineTasks(r);
@@ -3152,7 +3194,7 @@ async function pollLineLive(){
     /* รูปจากกลุ่ม (แถว IMAGE: message = LINE message id) → แนบกับงานของคนเดิมในกลุ่มเดิม ห่างไม่เกิน 3 นาที
        ส่งรูปก่อนหรือหลังข้อความแท็กก็ได้ · ดูทุกแถว เพราะงานอาจถูกสร้างทีหลังรูป · แต่ละรูปแนบได้ครั้งเดียว */
     for(const r of rows){
-      if(r.type !== 'IMAGE' || !/^\d+$/.test(r.message) || DB.tasks.some(t => (t.images || []).some(im => im.id === r.message))) continue;
+      if(r.type !== 'IMAGE' || !/^\d+$/.test(r.message) || imageOwners().some(t => (t.images || []).some(im => im.id === r.message))) continue;
       const target = lineImageTarget(r);
       if(!target) continue;
       target.images = [...(target.images || []), {id: r.message, at: new Date(Number(r.id)).toISOString()}];
