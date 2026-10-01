@@ -505,7 +505,7 @@ function loadDB(){
   saveDB();
 }
 function renderCurrentView(){
-  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderSkuList, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, gallery:renderGallery, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
+  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderRemoteSku, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, gallery:renderGallery, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
   if(currentUser) renderNav();
@@ -802,7 +802,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'รายการ SKU ทั้งหมด', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'เช็ก SKU — ทำงานเร็ว', tiktokjobs:'ส่งงาน TikTok', skulist:'แก้ไข SKU (Supabase products)', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -3625,6 +3625,109 @@ async function fetchRemoteProducts(url, key, onProgress){
   }
   return out;
 }
+/* ---------- แก้ไข SKU ในตาราง products ของ Supabase (โปรเจกต์ร้าน) โดยตรง — ใช้ URL/คีย์ที่ตั้งไว้ใน Settings ---------- */
+const rsku = {q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null};
+function rrConf(){ const c = (DB.meta && DB.meta.rr_products) || {}; return c.url && c.key ? {url: c.url.replace(/\/+$/, ''), key: c.key} : null; }
+async function rrFetch(path, opts = {}){
+  const c = rrConf(); if(!c) throw new Error('ยังไม่ได้ตั้งค่า Supabase ที่ Settings → ดึงสินค้าจาก Supabase');
+  const headers = {apikey: c.key, 'Content-Type': 'application/json', ...(opts.headers || {})};
+  if(/^eyJ/.test(c.key)) headers.Authorization = 'Bearer ' + c.key;
+  const res = await fetch(c.url + '/rest/v1/' + path, {...opts, headers, cache: 'no-store'});
+  if(!res.ok){
+    const t = await res.text();
+    throw new Error(res.status === 409 || /duplicate key/i.test(t) ? 'SKU หรือ GTIN นี้มีอยู่แล้ว' : 'HTTP ' + res.status + ' ' + t.slice(0, 120));
+  }
+  return res;
+}
+async function loadRemoteSku(){
+  rsku.loading = true; rsku.err = ''; renderRemoteSku();
+  try{
+    const q = rsku.q.trim().replace(/[,()*%]/g, ' ').trim();
+    const filter = q ? '&or=(' + ['sku_merchant', 'brand', 'gtin'].map(f => f + '.ilike.*' + encodeURIComponent(q) + '*').join(',') + ')' : '';
+    const from = rsku.page * rsku.size;
+    const res = await rrFetch('products?select=id,sku_merchant,brand,gtin&order=sku_merchant.asc' + filter,
+      {headers: {'Range-Unit': 'items', Range: from + '-' + (from + rsku.size - 1), Prefer: 'count=exact'}});
+    rsku.rows = await res.json();
+    rsku.total = Number((res.headers.get('content-range') || '').split('/')[1]) || rsku.rows.length;
+  }catch(e){ rsku.err = e.message; rsku.rows = []; rsku.total = 0; }
+  rsku.loading = false; renderRemoteSku();
+}
+function renderRemoteSku(){
+  if(!rsku.rows.length && !rsku.loading && !rsku.err && !rsku.loaded){ rsku.loaded = true; loadRemoteSku(); return; }
+  const admin = isAdmin(), pages = Math.max(1, Math.ceil(rsku.total / rsku.size));
+  const cell = (r, f, ph) => rsku.edit === r.id
+    ? `<input class="input !py-1 text-sm font-mono" data-rs-field="${f}" value="${esc(r[f] || '')}" placeholder="${ph}">`
+    : `<span class="${f === 'sku_merchant' ? 'font-mono font-semibold text-brand-700' : 'text-slate-600'}">${esc(r[f] || '') || '<span class="text-slate-300">-</span>'}</span>`;
+  $('#view').innerHTML = `
+  <div class="fade-in space-y-4">
+    <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+      <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหา SKU / แบรนด์ / GTIN แล้วกด Enter" value="${esc(rsku.q)}">
+      <span class="text-sm text-slate-500 badge-num">${rsku.loading ? 'กำลังโหลด…' : `${rsku.total.toLocaleString()} รายการ · หน้า ${rsku.page + 1}/${pages}`}</span>
+      <div class="flex gap-1 lg:ml-auto whitespace-nowrap shrink-0">
+        <button class="btn btn-ghost btn-sm" data-rs-page="-1" ${rsku.page <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
+        <button class="btn btn-ghost btn-sm" data-rs-page="1" ${rsku.page + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
+        <button class="btn btn-ghost btn-sm" data-rs-reload title="โหลดใหม่"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>
+    ${admin ? `<div class="card p-4">
+      <p class="font-semibold text-slate-700 mb-2 flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>เพิ่ม SKU ใหม่</p>
+      <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2">
+        <input id="rsNewSku" class="input font-mono" placeholder="SKU เช่น 001478-BK-L">
+        <input id="rsNewBrand" class="input" placeholder="แบรนด์">
+        <input id="rsNewGtin" class="input font-mono" placeholder="GTIN / บาร์โค้ด (ไม่ใส่ก็ได้)">
+        <button class="btn btn-primary" data-rs-add><i data-lucide="plus" class="w-4 h-4"></i>เพิ่ม</button>
+      </div>
+    </div>` : ''}
+    ${rsku.err ? `<div class="card p-4 text-sm text-red-600">${esc(rsku.err)}</div>` : ''}
+    <div class="card overflow-hidden"><div class="overflow-x-auto">
+      <table class="data">
+        <thead><tr><th>SKU (sku_merchant)</th><th>แบรนด์</th><th>GTIN</th>${admin ? '<th class="text-right">จัดการ</th>' : ''}</tr></thead>
+        <tbody>${rsku.rows.map(r => `<tr>
+          <td>${cell(r, 'sku_merchant', 'SKU')}</td><td>${cell(r, 'brand', 'แบรนด์')}</td><td>${cell(r, 'gtin', 'GTIN')}</td>
+          ${admin ? `<td class="text-right whitespace-nowrap">${rsku.edit === r.id
+            ? `<button class="btn btn-primary btn-sm" data-rs-save="${r.id}">บันทึก</button> <button class="btn btn-ghost btn-sm" data-rs-cancel>ยกเลิก</button>`
+            : `<button class="btn btn-ghost btn-sm" data-rs-edit="${r.id}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>แก้ไข</button> <button class="btn btn-danger btn-sm" data-rs-del="${r.id}">ลบ</button>`}</td>` : ''}
+        </tr>`).join('') || `<tr><td colspan="4" class="text-center text-slate-400 py-8">${rsku.loading ? 'กำลังโหลด…' : 'ไม่พบ SKU'}</td></tr>`}</tbody>
+      </table>
+    </div></div>
+  </div>`;
+  if(window.lucide) lucide.createIcons();
+}
+document.addEventListener('keydown', e => { if(e.target.id === 'rsQ' && e.key === 'Enter'){ rsku.q = e.target.value; rsku.page = 0; loadRemoteSku(); } });
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-rs-page],[data-rs-reload],[data-rs-add],[data-rs-edit],[data-rs-cancel],[data-rs-save],[data-rs-del]');
+  if(!b) return;
+  if(b.dataset.rsPage){ rsku.page = Math.max(0, rsku.page + Number(b.dataset.rsPage)); rsku.edit = null; loadRemoteSku(); return; }
+  if(b.hasAttribute('data-rs-reload')){ loadRemoteSku(); return; }
+  if(!isAdmin()) return;
+  if(b.dataset.rsEdit){ rsku.edit = Number(b.dataset.rsEdit); renderRemoteSku(); return; }
+  if(b.hasAttribute('data-rs-cancel')){ rsku.edit = null; renderRemoteSku(); return; }
+  try{
+    if(b.hasAttribute('data-rs-add')){
+      const row = {sku_merchant: $('#rsNewSku').value.trim(), brand: $('#rsNewBrand').value.trim(), gtin: $('#rsNewGtin').value.trim() || null};
+      if(!row.sku_merchant){ toast('กรอก SKU ก่อน', 'error'); return; }
+      b.disabled = true;
+      await rrFetch('products', {method: 'POST', body: JSON.stringify(row), headers: {Prefer: 'return=minimal'}});
+      logHistory('rr_sku_add', row.sku_merchant); toast('เพิ่ม ' + row.sku_merchant + ' แล้ว');
+      rsku.q = row.sku_merchant; rsku.page = 0; loadRemoteSku(); return;
+    }
+    if(b.dataset.rsSave){
+      const id = Number(b.dataset.rsSave), tr = b.closest('tr'), val = f => tr.querySelector(`[data-rs-field="${f}"]`).value.trim();
+      const patch = {sku_merchant: val('sku_merchant'), brand: val('brand'), gtin: val('gtin') || null};
+      if(!patch.sku_merchant){ toast('SKU ห้ามว่าง', 'error'); return; }
+      b.disabled = true;
+      await rrFetch('products?id=eq.' + id, {method: 'PATCH', body: JSON.stringify(patch), headers: {Prefer: 'return=minimal'}});
+      logHistory('rr_sku_edit', patch.sku_merchant); toast('บันทึก ' + patch.sku_merchant + ' แล้ว');
+      rsku.edit = null; loadRemoteSku(); return;
+    }
+    if(b.dataset.rsDel){
+      const r = rsku.rows.find(x => x.id === Number(b.dataset.rsDel)); if(!r) return;
+      if(!confirm('ลบ ' + r.sku_merchant + ' ออกจากตาราง products ใน Supabase?\nลบแล้วกู้คืนไม่ได้')) return;
+      await rrFetch('products?id=eq.' + r.id, {method: 'DELETE', headers: {Prefer: 'return=minimal'}});
+      logHistory('rr_sku_del', r.sku_merchant); toast('ลบ ' + r.sku_merchant + ' แล้ว'); loadRemoteSku();
+    }
+  }catch(err){ toast(err.message, 'error'); b.disabled = false; }
+});
 /* ตัดสี/ไซส์ → รวมเป็น SKU หลัก แล้วเพิ่มเฉพาะที่ยังไม่มี (เติมแบรนด์ให้ SKU เดิมที่ยังว่าง) */
 function mergeRemoteProducts(rows){
   const bases = new Map();
