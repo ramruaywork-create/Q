@@ -2542,13 +2542,22 @@ function renderUsers(){
 }
 
 /* ---------- Shop Management (admin) ---------- */
+document.addEventListener('change', e => {
+  if(e.target.id !== 'nsPlat') return;
+  const box = $('#nsNewPlat'), isNew = e.target.value === '__new';
+  box.classList.toggle('hidden', !isNew);
+  if(isNew) box.focus();
+});
 function renderShops(){
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
     <div class="card p-5">
       <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i data-lucide="store-plus" class="w-5 h-5 text-brand-600"></i>เพิ่มร้านใหม่</h3>
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <select id="nsPlat" class="input">${PLATFORMS.map(p=>`<option>${esc(p)}</option>`).join('')}<option value="__new">+ แพลตฟอร์มอื่น…</option></select>
+        <div class="space-y-2">
+          <select id="nsPlat" class="input">${PLATFORMS.map(p=>`<option>${esc(p)}</option>`).join('')}<option value="__new">+ แพลตฟอร์มอื่น…</option></select>
+          <input id="nsNewPlat" class="input hidden" maxlength="40" placeholder="ชื่อแพลตฟอร์มใหม่ เช่น Facebook">
+        </div>
         <input id="nsCode" class="input font-mono" placeholder="รหัสร้าน เช่น DP">
         <input id="nsName" class="input" placeholder="ชื่อร้าน (เต็ม)">
         <button id="nsAdd" class="btn btn-primary"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มร้าน</button>
@@ -3730,8 +3739,8 @@ document.addEventListener('click', e=>{
     let plat=$('#nsPlat').value; const code=$('#nsCode').value.trim(), name=$('#nsName').value.trim()||code;
     if(!code){ toast('กรุณากรอกรหัสร้าน','error'); return; }
     if(plat === '__new'){
-      plat = (prompt('ชื่อแพลตฟอร์มใหม่ เช่น Facebook, LINE Shopping, Website') || '').trim();
-      if(!plat) return;
+      plat = $('#nsNewPlat').value.trim();
+      if(!plat){ toast('กรุณากรอกชื่อแพลตฟอร์มใหม่','error'); $('#nsNewPlat').focus(); return; }
       plat = PLATFORMS.find(x => x.toLowerCase() === plat.toLowerCase()) || plat; // สะกดตรงกับที่มีอยู่แล้ว → ใช้อันเดิม
     }
     if(DB.shops.some(s=>s.platform===plat && s.code.toLowerCase()===code.toLowerCase())){ toast('ร้านนี้มีอยู่แล้วใน Platform นี้','error'); return; }
