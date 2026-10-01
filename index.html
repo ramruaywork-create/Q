@@ -204,7 +204,7 @@ function startVersionWatch(){
    ============================================================ */
 const LS_KEY = 'sku_tracker_db_v2';
 const SESS_KEY = 'sku_tracker_session_v1';
-/* ข้อมูลกลางของทีมอยู่ที่ Supabase (supabase/functions/sku-api — ทำงานแบบเดียวกับ api.php) */
+/* ข้อมูลกลางของทีมอยู่ที่ Supabase (supabase/functions/sku-api) */
 const API_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/sku-api';
 const TOKEN_KEY = 'sku_tracker_session_token_v1';
 const getToken = () => { try{ return localStorage.getItem(TOKEN_KEY) || ''; }catch(e){ return ''; } };
