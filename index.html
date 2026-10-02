@@ -1541,6 +1541,7 @@ function checkImportBox(shop){
           <p class="flex-1 min-w-0 text-sm text-slate-500">ลากไฟล์ <b class="text-slate-600">.xlsx .xls .csv</b> มาวาง — ดู Preview ก่อนนำเข้า</p>
           <button type="button" id="importBrowseBtn" class="btn btn-soft btn-sm flex-shrink-0"><i data-lucide="folder-up" class="w-4 h-4"></i>เลือกไฟล์</button>
         </div>
+        <button type="button" data-bs-pull class="btn btn-primary flex-shrink-0" title="ไฟล์ที่ส่วนขยายชิวเกินอัปขึ้น Supabase ล่าสุด (รอบเดียวกันรวมให้)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>
       </div>
       <div id="importBusy" class="hidden mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-xl p-3">
         <div class="flex items-center gap-3"><span class="inline-block h-5 w-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin"></span><span class="busyText text-sm font-medium">กำลังอ่านไฟล์...</span></div>
@@ -2295,6 +2296,37 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
     </div>`;
   if(window.lucide) lucide.createIcons();
 }
+/* ดึงไฟล์ที่ส่วนขยาย "ชิวเกิน" อัปขึ้น Supabase — รวมทุกไฟล์ของรอบล่าสุด (ห่างจากไฟล์ใหม่สุดไม่เกิน 3 ชม.) */
+const BS_UPLOAD_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/bigseller-upload';
+async function pullBigSeller(){
+  if(!apiMode || !getToken()){ toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
+  if(!window.XLSX){ toast('ไลบรารี Excel ยังไม่พร้อม ลองใหม่อีกครั้ง', 'error'); return; }
+  showImportBusy('กำลังดึงไฟล์จาก BigSeller...');
+  try{
+    const r = await fetch(BS_UPLOAD_URL + '?a=list', {cache: 'no-store', headers: {'X-Session': getToken()}});
+    const j = await r.json().catch(() => ({}));
+    if(!j.ok){ toast('ดึงรายการไฟล์ไม่สำเร็จ', 'error'); return; }
+    const files = j.files || [];
+    if(!files.length){ toast('ยังไม่มีไฟล์จาก BigSeller ใน 36 ชม.ที่ผ่านมา', 'info'); return; }
+    const newest = new Date(files[0].at).getTime();
+    const run = files.filter(f => newest - new Date(f.at).getTime() < 3 * 3600000);
+    let rows = [];
+    for(let i = 0; i < run.length; i++){
+      showImportBusy(`กำลังอ่านไฟล์ ${i + 1}/${run.length}...`);
+      const buf = await (await fetch(run[i].url, {cache: 'no-store'})).arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), {type: 'array'});
+      rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''}));
+    }
+    if(!rows.length){ toast('ไฟล์ว่าง', 'error'); return; }
+    const headers = Object.keys(rows[0]), key = h => String(h || '').toLowerCase().replace(/\s+/g, '');
+    const nickCol = headers.find(h => key(h) === 'ชื่อเล่นร้านค้า'), parentCol = headers.find(h => key(h) === 'parentsku');
+    if(!nickCol || !parentCol){ toast('ไฟล์ไม่มีคอลัมน์ ชื่อเล่นร้านค้า / Parent SKU', 'error'); return; }
+    const when = new Date(newest).toLocaleString('th-TH', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+    showListingPreview({name: `BigSeller ${when} (${run.length} ไฟล์)`}, rows, headers, nickCol, parentCol);
+  }catch(err){ toast('ดึงไฟล์ไม่สำเร็จ: ' + err.message, 'error'); }
+  finally{ hideImportBusy(); }
+}
+document.addEventListener('click', e => { if(e.target.closest('[data-bs-pull]')) pullBigSeller(); });
 function confirmListingImport(){
   const p = importPreview, at = nowISO(), today = todayISO();
   document.querySelectorAll('[data-imp-nick]').forEach(sel => { const g = p.groups.find(x => x.nick === sel.dataset.impNick); if(g) g.shopId = sel.value; });
