@@ -801,7 +801,7 @@ function navTo(id){
   if(NAV.find(n=>n.id===id && n.admin) && !isAdmin()){ toast('คุณไม่มีสิทธิ์เข้าหน้านี้','error'); return; }
   currentView = id;
   renderNav();
-  const titles = {dashboard:'แดชบอร์ด', check:'งาน', tiktokjobs:'งาน', skulist:'แก้ไข SKU (Supabase products)', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
+  const titles = {dashboard:'แดชบอร์ด', check:'งาน', tiktokjobs:'งาน', skulist:'SKU Merchant', addsku:'เพิ่มสินค้าใหม่', import:'นำเข้าไฟล์สินค้าขายดี', importfix:'แก้ไข SKU ที่นำเข้าไม่สำเร็จ', mywork:'งานของฉัน', tasks:'งาน', campaigns:'งาน', gallery:'คลังรูปจาก LINE', report:'รายงานการทำงานรายวัน', users:'จัดการผู้ใช้งาน', shops:'จัดการร้านค้า', settings:'การตั้งค่า'};
   $('#pageTitle').textContent = titles[id]||'';
   renderCurrentView();
   if(window.lucide) lucide.createIcons();
@@ -3695,7 +3695,7 @@ async function fetchRemoteProducts(url, key, onProgress){
   return out;
 }
 /* ---------- แก้ไข SKU ในตาราง products ของ Supabase (โปรเจกต์ร้าน) โดยตรง — ใช้ URL/คีย์ที่ตั้งไว้ใน Settings ---------- */
-const rsku = {q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null};
+const rsku = {q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null, mode: 'base', bpage: 0};
 function rrConf(){ const c = (DB.meta && DB.meta.rr_products) || {}; return c.url && c.key ? {url: c.url.replace(/\/+$/, ''), key: c.key} : null; }
 async function rrFetch(path, opts = {}){
   const c = rrConf(); if(!c) throw new Error('ยังไม่ได้ตั้งค่า Supabase ที่ Settings → ดึงสินค้าจาก Supabase');
@@ -3721,7 +3721,36 @@ async function loadRemoteSku(){
   }catch(e){ rsku.err = e.message; rsku.rows = []; rsku.total = 0; }
   rsku.loading = false; renderRemoteSku();
 }
+/* โหมด รหัสสินค้า: SKU หลัก (ตัดสี/ไซส์แล้ว) จากรายการสินค้าในเว็บ + ตารางไซส์ */
+function renderBaseSku(){
+  const q = rsku.q.trim().toLowerCase();
+  const list = DB.products.filter(p => !q || [p.sku, p.brand, p.name].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+  const pages = Math.max(1, Math.ceil(list.length / rsku.size)); if(rsku.bpage >= pages) rsku.bpage = pages - 1;
+  const rows = list.slice(rsku.bpage * rsku.size, (rsku.bpage + 1) * rsku.size);
+  return `
+    <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+      <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหารหัสสินค้า / แบรนด์ แล้วกด Enter" value="${esc(rsku.q)}">
+      <span class="text-sm text-slate-500 badge-num">${list.length.toLocaleString()} รหัส · หน้า ${rsku.bpage + 1}/${pages}</span>
+      <div class="flex gap-1 lg:ml-auto whitespace-nowrap shrink-0">
+        <button class="btn btn-ghost btn-sm" data-rs-bpage="-1" ${rsku.bpage <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
+        <button class="btn btn-ghost btn-sm" data-rs-bpage="1" ${rsku.bpage + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
+      </div>
+    </div>
+    <div class="card overflow-hidden"><div class="overflow-x-auto">
+      <table class="data">
+        <thead><tr><th>รหัสสินค้า</th><th>ตารางไซส์</th><th>แบรนด์</th></tr></thead>
+        <tbody>${rows.map(p => `<tr><td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td><td>${sizeChartCell(p)}</td><td class="text-slate-600">${esc(p.brand || '-')}</td></tr>`).join('')
+          || '<tr><td colspan="3" class="text-center text-slate-400 py-8">ไม่พบรหัสสินค้า</td></tr>'}</tbody>
+      </table>
+    </div></div>`;
+}
 function renderRemoteSku(){
+  const modeBar = `<div class="inline-flex gap-1 p-1 rounded-xl bg-slate-100">${[['base','รหัสสินค้า'],['sku','SKU']].map(([k, l]) => `<button class="px-4 py-1.5 rounded-lg text-sm font-semibold ${rsku.mode === k ? 'bg-white shadow text-brand-700' : 'text-slate-500'}" data-rs-mode="${k}">${l}</button>`).join('')}</div>`;
+  if(rsku.mode === 'base'){
+    $('#view').innerHTML = `<div class="fade-in space-y-4">${modeBar}${renderBaseSku()}</div>`;
+    if(window.lucide) lucide.createIcons();
+    return;
+  }
   if(!rsku.rows.length && !rsku.loading && !rsku.err && !rsku.loaded){ rsku.loaded = true; loadRemoteSku(); return; }
   const admin = isAdmin(), pages = Math.max(1, Math.ceil(rsku.total / rsku.size));
   const cell = (r, f, ph) => rsku.edit === r.id
@@ -3729,6 +3758,7 @@ function renderRemoteSku(){
     : `<span class="${f === 'sku_merchant' ? 'font-mono font-semibold text-brand-700' : 'text-slate-600'}">${esc(r[f] || '') || '<span class="text-slate-300">-</span>'}</span>`;
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    ${modeBar}
     <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
       <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหา SKU / แบรนด์ / GTIN แล้วกด Enter" value="${esc(rsku.q)}">
       <span class="text-sm text-slate-500 badge-num">${rsku.loading ? 'กำลังโหลด…' : `${rsku.total.toLocaleString()} รายการ · หน้า ${rsku.page + 1}/${pages}`}</span>
@@ -3762,7 +3792,11 @@ function renderRemoteSku(){
   </div>`;
   if(window.lucide) lucide.createIcons();
 }
-document.addEventListener('keydown', e => { if(e.target.id === 'rsQ' && e.key === 'Enter'){ rsku.q = e.target.value; rsku.page = 0; loadRemoteSku(); } });
+document.addEventListener('keydown', e => { if(e.target.id === 'rsQ' && e.key === 'Enter'){ rsku.q = e.target.value; rsku.page = 0; rsku.bpage = 0; if(rsku.mode === 'base') renderRemoteSku(); else loadRemoteSku(); } });
+document.addEventListener('click', e => {
+  const m = e.target.closest('[data-rs-mode]'); if(m){ rsku.mode = m.dataset.rsMode; rsku.edit = null; renderRemoteSku(); return; }
+  const bp = e.target.closest('[data-rs-bpage]'); if(bp){ rsku.bpage = Math.max(0, rsku.bpage + Number(bp.dataset.rsBpage)); renderRemoteSku(); }
+});
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-rs-page],[data-rs-reload],[data-rs-add],[data-rs-edit],[data-rs-cancel],[data-rs-save],[data-rs-del]');
   if(!b) return;
