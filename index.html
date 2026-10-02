@@ -1737,6 +1737,7 @@ function renderCheck(){
   </div>`;
   if(keepImportHtml && $('#importResult')) $('#importResult').innerHTML = keepImportHtml;
   if(window.lucide) lucide.createIcons();
+  maybeAutoPullBigSeller(); // มีไฟล์ใหม่จากชิวเกิน → เปิดตารางเทียบรอให้กดนำเข้า
 }
 
 /* ---------- SKU List ---------- */
@@ -2244,12 +2245,12 @@ function shopForNick(nick, platform){
   const near = shops.filter(s => { const c = String(s.code).toUpperCase(); return c[0] === bare[0] && inOrder(c, bare); });
   return near.length === 1 ? near[0].id : '';
 }
-function showListingPreview(file, rows, headers, nickCol, parentCol){
+function showListingPreview(file, rows, headers, nickCol, parentCol, opts = {}){
   const norm = h => String(h || '').toLowerCase().replace(/\s+/g, '');
   const itemCol = headers.find(h => norm(h) === 'itemid');
   const priceCol = headers.find(h => norm(h) === 'ราคา');
   const selectedShop = DB.shops.find(s => s.id === importSelectedShopId) || DB.shops[0];
-  const platform = selectedShop ? selectedShop.platform : 'Shopee';
+  const platform = opts.platform || (selectedShop ? selectedShop.platform : 'Shopee');
   const known = knownSkuSet();
   const groups = new Map(), failed = [];
   rows.forEach((r, i) => {
@@ -2269,13 +2270,14 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
     if(price > 0 && (it.price === null || price < it.price)) it.price = price;
   });
   const list = [...groups.values()].map(g => ({...g, items: [...g.items.values()]}));
-  importPreview = {mode: 'listing', file_name: file.name, groups: list, failed, platform, shop_id: selectedShop ? selectedShop.id : null};
+  importPreview = {mode: 'listing', file_name: file.name, groups: list, failed, platform, shop_id: selectedShop ? selectedShop.id : null, bs_at: opts.bs_at || 0};
+  if(!$('#importResult')){ chkImportOpen = true; renderCheck(); }
   const shops = DB.shops.filter(s => s.platform === platform);
   const total = list.reduce((n, g) => n + g.items.length, 0);
   $('#importResult').innerHTML = `
     <div class="border rounded-xl p-4 fade-in" style="border-color:var(--border);">
       <p class="font-semibold mb-1 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-brand-600"></i>ไฟล์สินค้าออนไลน์ · ${list.length} ร้าน · ${total} SKU</p>
-      <p class="text-xs text-slate-500 mb-3">ใช้เฉพาะคอลัมน์ ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา — จับคู่ชื่อเล่นกับร้านในระบบ (ระบบจำไว้ครั้งต่อไป)</p>
+      <p class="text-xs text-slate-500 mb-3">${opts.auto ? '<b class="text-amber-700">มีไฟล์ใหม่จาก BigSeller — ตรวจร้านแล้วกด นำเข้า</b> · ' : ''}ใช้เฉพาะคอลัมน์ ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา — จับคู่ชื่อเล่นกับร้านในระบบ (ระบบจำไว้ครั้งต่อไป)</p>
       <div class="border rounded-lg mb-3 overflow-x-auto" style="border-color:var(--border);">
         <table class="data"><thead><tr><th>ชื่อเล่นในไฟล์</th><th>ร้านในระบบ</th><th class="text-right">SKU</th><th class="text-right">ไม่พบในระบบ</th><th>ตัวอย่าง</th></tr></thead><tbody>
           ${list.map(g => `<tr>
@@ -2296,36 +2298,48 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
     </div>`;
   if(window.lucide) lucide.createIcons();
 }
-/* ดึงไฟล์ที่ส่วนขยาย "ชิวเกิน" อัปขึ้น Supabase — รวมทุกไฟล์ของรอบล่าสุด (ห่างจากไฟล์ใหม่สุดไม่เกิน 3 ชม.) */
+/* ดึงไฟล์ที่ส่วนขยาย "ชิวเกิน" อัปขึ้น Supabase มาเทียบกับหน้าเช็ก SKU
+   - กดปุ่มเอง: รวมทุกไฟล์ของรอบล่าสุด (ห่างจากไฟล์ใหม่สุดไม่เกิน 3 ชม.)
+   - อัตโนมัติ (เปิดหน้าเช็ก SKU · ทุก 2 นาที): ไฟล์ที่ใหม่กว่าครั้งก่อน (DB.meta.bs_synced_at) → เปิดตารางเทียบรอให้กดนำเข้า (ไม่บันทึกเอง) */
 const BS_UPLOAD_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/bigseller-upload';
-async function pullBigSeller(){
-  if(!apiMode || !getToken()){ toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
-  if(!window.XLSX){ toast('ไลบรารี Excel ยังไม่พร้อม ลองใหม่อีกครั้ง', 'error'); return; }
-  if(!$('#importResult')){ chkImportOpen = true; renderCheck(); } // กดจากแถบด้านบน → เปิดกล่องนำเข้าให้ก่อน
-  showImportBusy('กำลังดึงไฟล์จาก BigSeller...');
+let bsPulling = false, bsLastCheck = 0;
+function maybeAutoPullBigSeller(){
+  if(!apiMode || !getToken() || !window.XLSX || bsPulling || importPreview || Date.now() - bsLastCheck < 120000) return;
+  bsLastCheck = Date.now();
+  pullBigSeller(true);
+}
+setInterval(() => { if(currentView === 'check') maybeAutoPullBigSeller(); }, 120000); // เปิดหน้าค้างไว้ก็เช็กให้
+async function pullBigSeller(auto = false){
+  if(!apiMode || !getToken()){ if(!auto) toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
+  if(!window.XLSX){ if(!auto) toast('ไลบรารี Excel ยังไม่พร้อม ลองใหม่อีกครั้ง', 'error'); return; }
+  if(bsPulling) return;
+  bsPulling = true;
+  if(!auto){ if(!$('#importResult')){ chkImportOpen = true; renderCheck(); } showImportBusy('กำลังดึงไฟล์จาก BigSeller...'); }
   try{
     const r = await fetch(BS_UPLOAD_URL + '?a=list', {cache: 'no-store', headers: {'X-Session': getToken()}});
     const j = await r.json().catch(() => ({}));
-    if(!j.ok){ toast('ดึงรายการไฟล์ไม่สำเร็จ', 'error'); return; }
-    const files = (j.files || []).filter(f => /Online_products.*\.xlsx$/i.test(f.name)); // ไฟล์ SKU Merchant (.zip) ไม่ใช่ของหน้านี้
-    if(!files.length){ toast('ยังไม่มีไฟล์สินค้า Shopee จาก BigSeller ใน 36 ชม.ที่ผ่านมา', 'info'); return; }
-    const newest = new Date(files[0].at).getTime();
-    const run = files.filter(f => newest - new Date(f.at).getTime() < 3 * 3600000);
+    if(!j.ok){ if(!auto) toast('ดึงรายการไฟล์ไม่สำเร็จ', 'error'); return; }
+    const files = (j.files || []).filter(f => /Online_products.*\.xlsx$/i.test(f.name)); // ไฟล์ SKU Merchant ไม่ใช่ของหน้านี้
+    if(!files.length){ if(!auto) toast('ยังไม่มีไฟล์สินค้า Shopee จาก BigSeller ใน 36 ชม.ที่ผ่านมา', 'info'); return; }
+    const newest = new Date(files[0].at).getTime(), synced = Number((DB.meta || {}).bs_synced_at) || 0;
+    if(auto && newest <= synced) return; // ไม่มีไฟล์ใหม่
+    const run = auto ? files.filter(f => new Date(f.at).getTime() > synced)
+                     : files.filter(f => newest - new Date(f.at).getTime() < 3 * 3600000);
     let rows = [];
     for(let i = 0; i < run.length; i++){
-      showImportBusy(`กำลังอ่านไฟล์ ${i + 1}/${run.length}...`);
+      if(!auto) showImportBusy(`กำลังอ่านไฟล์ ${i + 1}/${run.length}...`);
       const buf = await (await fetch(run[i].url, {cache: 'no-store'})).arrayBuffer();
       const wb = XLSX.read(new Uint8Array(buf), {type: 'array'});
       rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''}));
     }
-    if(!rows.length){ toast('ไฟล์ว่าง', 'error'); return; }
+    if(!rows.length){ if(!auto) toast('ไฟล์ว่าง', 'error'); return; }
     const headers = Object.keys(rows[0]), key = h => String(h || '').toLowerCase().replace(/\s+/g, '');
     const nickCol = headers.find(h => key(h) === 'ชื่อเล่นร้านค้า'), parentCol = headers.find(h => key(h) === 'parentsku');
-    if(!nickCol || !parentCol){ toast('ไฟล์ไม่มีคอลัมน์ ชื่อเล่นร้านค้า / Parent SKU', 'error'); return; }
+    if(!nickCol || !parentCol){ if(!auto) toast('ไฟล์ไม่มีคอลัมน์ ชื่อเล่นร้านค้า / Parent SKU', 'error'); return; }
     const when = new Date(newest).toLocaleString('th-TH', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
-    showListingPreview({name: `BigSeller ${when} (${run.length} ไฟล์)`}, rows, headers, nickCol, parentCol);
-  }catch(err){ toast('ดึงไฟล์ไม่สำเร็จ: ' + err.message, 'error'); }
-  finally{ hideImportBusy(); }
+    showListingPreview({name: `BigSeller ${when} (${run.length} ไฟล์)`}, rows, headers, nickCol, parentCol, {auto, platform: 'Shopee', bs_at: newest});
+  }catch(err){ if(!auto) toast('ดึงไฟล์ไม่สำเร็จ: ' + err.message, 'error'); else console.warn('BigSeller auto pull', err); }
+  finally{ bsPulling = false; if(!auto) hideImportBusy(); }
 }
 document.addEventListener('click', e => { if(e.target.closest('[data-bs-pull]')) pullBigSeller(); });
 function confirmListingImport(){
@@ -2360,6 +2374,7 @@ function confirmListingImport(){
   });
   p.failed.forEach(f => { const g = p.groups.find(x => x.nick === f.nick); if(g) f.shop_id = g.shopId; });
   const nFail = recordImportFailures(p);
+  if(p.bs_at) DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, p.bs_at);
   saveDB();
   toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
   importPreview = null; checkState.selected.clear(); navTo(nFail ? 'importfix' : 'check');
@@ -4433,7 +4448,7 @@ document.addEventListener('click', e=>{
     downloadTextFile(csv, 'import-failed-audit.csv');
     toast('Export รายการนำเข้าไม่สำเร็จแล้ว');
   }
-  else if(e.target.id==='importCancel' || e.target.closest('#importCancel')){ importPreview=null; $('#importResult').innerHTML=''; $('#importFile').value=''; }
+  else if(e.target.id==='importCancel' || e.target.closest('#importCancel')){ if(importPreview && importPreview.bs_at){ DB.meta = DB.meta || {}; DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, importPreview.bs_at); saveDB(); } importPreview=null; $('#importResult').innerHTML=''; $('#importFile').value=''; }
   else if(e.target.id==='copyReportAll' || e.target.closest('#copyReportAll')){
     const txt=buildReportText(reportDate, isAdmin()?null:currentUser.id);
     copyText(txt).then(ok=>toast(ok?'คัดลอกรายงานแล้ว ✓ — Paste ลง LINE ได้เลย':'คัดลอกไม่สำเร็จ', ok?'success':'error'));
