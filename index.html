@@ -2263,12 +2263,13 @@ function showListingPreview(file, rows, headers, nickCol, parentCol, opts = {}){
   rows.forEach((r, i) => {
     if(!rowHasData(r)) return;
     const nick = String(r[nickCol] || '').trim() || '(ไม่ระบุร้าน)';
-    const raw = String(r[parentCol] || '').trim(), sku = normalizeBaseSku(raw);
+    // Parent SKU คือรหัสสินค้าหลักอยู่แล้ว → เทียบตรงตัวก่อน ถ้าไม่เจอค่อยลองตัดสี/ไซส์
+    const raw = String(r[parentCol] || '').trim(), sku = known.has(raw.toUpperCase()) ? raw : normalizeBaseSku(raw);
     const problem = skuProblem(sku);
     if(problem){ failed.push({row: i + 2, sku: raw, baseSku: sku, reason: problem}); return; }
     if(!groups.has(nick)) groups.set(nick, {nick, shopId: shopForNick(nick, platform), items: new Map()});
     const g = groups.get(nick), key = sku.toUpperCase();
-    if(!known.has(key)){ failed.push({row: i + 2, sku: raw, baseSku: sku, nick, reason: 'ไม่พบ SKU ในระบบ'}); return; }
+    if(!known.has(key)){ failed.push({row: i + 2, sku: raw, baseSku: raw, nick, reason: 'ไม่พบ SKU ในระบบ (Parent SKU)'}); return; }
     if(!g.items.has(key)) g.items.set(key, {sku, item_ids: [], price: null});
     const it = g.items.get(key);
     const itemId = itemCol ? String(r[itemCol] || '').trim() : '';
