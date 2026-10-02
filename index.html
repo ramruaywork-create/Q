@@ -1704,11 +1704,11 @@ function renderCheck(){
       <div class="overflow-x-auto">
       <table class="data">
         <thead><tr>
-          <th style="width:36px;"></th><th>SKU</th><th>ตารางไซส์</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
+          <th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="9" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
+          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
           products.map(p=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
@@ -1717,7 +1717,6 @@ function renderCheck(){
             return `<tr>
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
               <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
-              <td>${sizeChartCell(p)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
               <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
               <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
