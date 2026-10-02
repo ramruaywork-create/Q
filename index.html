@@ -2306,8 +2306,8 @@ async function pullBigSeller(){
     const r = await fetch(BS_UPLOAD_URL + '?a=list', {cache: 'no-store', headers: {'X-Session': getToken()}});
     const j = await r.json().catch(() => ({}));
     if(!j.ok){ toast('ดึงรายการไฟล์ไม่สำเร็จ', 'error'); return; }
-    const files = j.files || [];
-    if(!files.length){ toast('ยังไม่มีไฟล์จาก BigSeller ใน 36 ชม.ที่ผ่านมา', 'info'); return; }
+    const files = (j.files || []).filter(f => /Online_products.*\.xlsx$/i.test(f.name)); // ไฟล์ SKU Merchant (.zip) ไม่ใช่ของหน้านี้
+    if(!files.length){ toast('ยังไม่มีไฟล์สินค้า Shopee จาก BigSeller ใน 36 ชม.ที่ผ่านมา', 'info'); return; }
     const newest = new Date(files[0].at).getTime();
     const run = files.filter(f => newest - new Date(f.at).getTime() < 3 * 3600000);
     let rows = [];

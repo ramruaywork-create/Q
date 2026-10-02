@@ -55,14 +55,15 @@ Deno.serve(async (req) => {
 
     const body = new Uint8Array(await req.arrayBuffer());
     if (!body.length || body.length > MAX_BYTES) return respond({ ok: false, error: "ขนาดไฟล์ไม่ถูกต้อง" }, 400);
-    // ไฟล์ xlsx ต้องขึ้นต้นด้วย PK (zip)
-    if (body[0] !== 0x50 || body[1] !== 0x4b) return respond({ ok: false, error: "ไม่ใช่ไฟล์ .xlsx" }, 400);
+    // .xlsx และ .zip (SKU Merchant ส่งออกเป็น zip) ขึ้นต้นด้วย PK ทั้งคู่
+    if (body[0] !== 0x50 || body[1] !== 0x4b) return respond({ ok: false, error: "ไม่ใช่ไฟล์ .xlsx / .zip" }, 400);
     const base = (url.searchParams.get("name") || "export.xlsx").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 100);
+    const isZip = /\.zip$/i.test(base);
     const day = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10); // วันที่เวลาไทย
-    const name = `${day}/${Date.now()}-${base.endsWith(".xlsx") ? base : base + ".xlsx"}`;
+    const name = `${day}/${Date.now()}-${isZip || base.endsWith(".xlsx") ? base : base + ".xlsx"}`;
     const up = await storage(`object/${BUCKET}/${name}`, {
       method: "POST",
-      headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      headers: { "Content-Type": isZip ? "application/zip" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
       body,
     });
     if (!up.ok) { console.error("upload failed", up.status, await up.text()); return respond({ ok: false, error: "เก็บไฟล์ไม่สำเร็จ" }, 500); }
