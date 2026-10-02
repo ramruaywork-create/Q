@@ -78,7 +78,7 @@ tailwind.config = {
   .seg button:hover{ color:#0f766e; }
   .seg button.on{ background:#fff; color:#0f766e; box-shadow:0 1px 3px rgba(15,23,42,.1); }
   .seg button .n{ font-size:11px; font-weight:500; color:#94a3b8; margin-left:4px; }
-  .shop-pick{ display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1.5px solid var(--border); background:#fff; font-weight:600; font-size:13px; color:#334155; transition:all .15s ease; cursor:pointer; }
+  .shop-pick{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1.5px solid var(--border); background:#fff; font-weight:600; font-size:13px; color:#334155; transition:all .15s ease; cursor:pointer; }
   .shop-pick:hover{ border-color:var(--accent); }
   .shop-pick.on{ background:rgba(13,148,136,.1); border-color:var(--accent); color:#0f766e; }
   .shop-pick .tick{ width:16px; height:16px; border-radius:999px; border:1.5px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; font-size:10px; }
@@ -1666,11 +1666,11 @@ function renderCheck(){
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
-    <div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">
     ${workTabsHtml('check')}
+    <div class="sticky z-30 pt-1 pb-2 -mt-3" style="top:53px;background:var(--bg)">
     <div class="card overflow-hidden">
-      <div class="p-4 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="px-3 py-2.5 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="seg">${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="${pl===checkState.platform?'on':''}" data-chk-platform="${pl}">${pl}</button>`).join('')}</div>
           <div class="flex flex-wrap gap-2 sm:ml-auto">
           ${curShop && curShop.platform === 'Shopee' ? `<button class="btn btn-sm btn-primary" data-bs-pull title="ดึงไฟล์สินค้าล่าสุดที่ชิวเกินอัปขึ้น Supabase มาเทียบกับรายการนี้ (ทุกร้าน Shopee)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>` : ''}
@@ -1678,7 +1678,7 @@ function renderCheck(){
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-[11px] font-semibold tracking-wide text-slate-400 mr-1">${isAdmin()?'ร้าน':'ร้านของฉัน'} <span class="font-normal">(ทำแล้ว/ทั้งหมด)</span></span>
+          <span class="text-[11px] font-semibold text-slate-400" title="ตัวเลข = ทำแล้ว/ทั้งหมด">${isAdmin()?'ร้าน':'ร้านของฉัน'}</span>
             ${shops.map(sh=>{
               const on = sh.id===checkState.shopId;
               const done = DB.worklogs.filter(w=>w.shop_id===sh.id && w.platform===checkState.platform && w.status==='done').length;
@@ -1686,7 +1686,7 @@ function renderCheck(){
             }).join('')}
         </div>
       </div>
-      <div class="border-t px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-3" style="border-color:var(--border);">
+      <div class="border-t px-3 py-2 flex flex-col lg:flex-row lg:items-center gap-2" style="border-color:var(--border);">
         <div class="relative flex-1 min-w-0">
           <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
           <input id="chkSearch" class="input pl-9" placeholder="ค้นหา SKU / ชื่อ / แบรนด์ เช่น 020666" value="${esc(checkState.q)}" autofocus>
@@ -2865,7 +2865,7 @@ function workTabsHtml(active){
   if(active === 'tiktokjobs') active = 'campaigns';
   const nTask = (DB.tasks || []).filter(t => t.status !== 'done' && (isAdmin() ? !t.assignee_id : t.assignee_id === currentUser.id)).length;
   const nCamp = navBadgeCount('campaigns');
-  const tab = (id, icon, label, n) => `<button class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${active === id ? 'bg-white shadow text-brand-700' : 'text-slate-500 hover:text-slate-700'}" data-work-tab="${id}">
+  const tab = (id, icon, label, n) => `<button class="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition ${active === id ? 'bg-white shadow text-brand-700' : 'text-slate-500 hover:text-slate-700'}" data-work-tab="${id}">
       <i data-lucide="${icon}" class="w-4 h-4"></i>${label}${n ? `<span class="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 badge-num">${n}</span>` : ''}</button>`;
   return `<div class="inline-flex flex-wrap gap-1 p-1 rounded-xl bg-slate-100">${tab('tasks', 'list-todo', 'งานทั่วไป', nTask)}${tab('campaigns', 'clapperboard', 'วิดีโอแคมเปญ', nCamp)}${tab('check', 'scan-search', 'เช็ก SKU', 0)}</div>`;
 }
