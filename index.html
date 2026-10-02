@@ -1355,7 +1355,7 @@ function renderTikTokJobs(){
     : [];
   $('#view').innerHTML = `
     <div class="fade-in space-y-4">
-      ${workTabsHtml('tiktokjobs')}
+<div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">      ${workTabsHtml('tiktokjobs')}
       ${videoSubTabsHtml('tiktokjobs')}
       <div class="card p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
@@ -1363,7 +1363,7 @@ function renderTikTokJobs(){
           <h3 class="text-xl font-bold">ส่งงาน TikTok</h3>
         </div>
         <button class="btn btn-primary" data-tiktok-new><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มงาน TikTok</button>
-      </div>
+      </div></div>
       ${jobs.length===0 ? `
         <div class="card p-10 text-center text-slate-500">
           ยังไม่มีงาน TikTok ในระบบ <br>
@@ -1663,6 +1663,7 @@ function renderCheck(){
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    <div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">
     ${workTabsHtml('check')}
     <div class="card overflow-hidden">
       <div class="p-4 space-y-4">
@@ -1693,7 +1694,7 @@ function renderCheck(){
           <i data-lucide="check-check" class="w-4 h-4"></i>ทำแล้วทั้งหมด (<span id="selCount">${checkState.selected.size}</span>)
         </button>
       </div>
-    </div>
+    </div></div>
 
     <div class="card overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--border);">
@@ -2715,7 +2716,7 @@ function renderCampaigns(){
   try{ localStorage.setItem(campSeenKey(), nowISO()); }catch(e){} // เปิดดูแล้ว → เลิกแจ้งเตือนสีแดง
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
-    ${workTabsHtml('campaigns')}
+<div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">    ${workTabsHtml('campaigns')}
     ${videoSubTabsHtml('campaigns')}
     <div class="card p-4 flex flex-wrap items-center gap-3">
       <div class="flex items-center gap-1">
@@ -2728,7 +2729,7 @@ function renderCampaigns(){
         <div class="flex justify-between text-xs text-slate-500 mb-1"><span>ลงแล้ว <b class="text-slate-700 badge-num">${doneAll}</b> / ${total} วิดีโอ · ${targets.length} ร้าน</span><b class="badge-num">${pct}%</b></div>
         <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>
       </div>
-    </div>
+    </div></div>
     ${targets.length ? `<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">${targets.map(({c, shop}) => {
       const target = Number(c.target) || 0, done = Math.min(Number(c.done) || 0, target), full = !!c.done_at || (target && done >= target);
       const notice = c.notified_at ? 'Reply "เช็คหน่อย" ในกลุ่มแล้ว ' + localDateTime(c.notified_at)
@@ -2908,15 +2909,8 @@ function renderTasks(){
   const users = DB.users.filter(u => u.active);
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    <div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">
     ${workTabsHtml('tasks')}
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-      ${cards.map(([k,label,cls,color]) => `<button class="card stat-card ${cls} p-4 text-left ${taskState.filter===k?'ring-2 ring-teal-500':''}" data-task-filter="${k}">
-        <b class="block text-2xl badge-num ${color}">${c[k]}</b><span class="text-sm text-slate-500">${label}</span></button>`).join('')}
-    </div>
-    <div class="card p-4">
-      <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">ความคืบหน้า</span><b class="badge-num">${pct}%</b></div>
-      <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-green-500 transition-all" style="width:${pct}%"></div></div>
-    </div>
     <div class="grid grid-cols-1 md:grid-cols-[1fr_12rem_12rem_auto] gap-2">
       <input id="taskQ" class="input" type="search" placeholder="ค้นหางาน / ผู้รับผิดชอบ…" value="${esc(taskState.q)}">
       <select id="taskPerson" class="input">
@@ -2930,7 +2924,17 @@ function renderTasks(){
       </select>
       <button class="btn btn-primary whitespace-nowrap" data-task-add><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มงาน</button>
     </div>
-    <div class="text-xs text-slate-500 flex items-center gap-1.5"><span id="lineLiveDot" class="inline-block w-2 h-2 rounded-full ${lineLive.ok===true?'bg-green-500':lineLive.ok===false?'bg-red-500':'bg-slate-300'}"></span>LINE สด · <span id="lineLiveTime">${esc(lineLive.msg)}</span></div>
+    <div class="text-xs text-slate-500 flex items-center gap-1.5"><span id="lineLiveDot" class="inline-block w-2 h-2 rounded-full ${lineLive.ok===true?'bg-green-500':lineLive.ok===false?'bg-red-500':'bg-slate-300'}"></span>LINE สด · <span id="lineLiveTime">${esc(lineLive.msg)}</span></div></div>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      ${cards.map(([k,label,cls,color]) => `<button class="card stat-card ${cls} p-4 text-left ${taskState.filter===k?'ring-2 ring-teal-500':''}" data-task-filter="${k}">
+        <b class="block text-2xl badge-num ${color}">${c[k]}</b><span class="text-sm text-slate-500">${label}</span></button>`).join('')}
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">ความคืบหน้า</span><b class="badge-num">${pct}%</b></div>
+      <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-green-500 transition-all" style="width:${pct}%"></div></div>
+    </div>
+
+
     <div id="taskList" class="space-y-2">${renderTaskList()}</div>
     ${(() => { const lc = lineCmds(), row = (cmd, what) => `<div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3"><code class="font-mono text-xs bg-slate-50 rounded px-2 py-1 sm:w-80 shrink-0">${cmd}</code><span>${what}</span></div>`;
       return `<details class="card p-4 text-sm text-slate-600" style="outline:none"><summary class="font-semibold text-slate-700 cursor-pointer flex items-center gap-2 select-none" style="outline:none;list-style:none"><i data-lucide="message-circle" class="w-4 h-4" style="color:#06c755"></i>คำสั่งในกลุ่ม LINE</summary>
