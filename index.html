@@ -1528,7 +1528,9 @@ let chkImportOpen = false;
 function checkImportBox(shop){
   if(!shop) return '';
   if(importMode !== 'sku'){ importMode = 'sku'; importPreview = null; } // หน้าเช็ก SKU รับแค่ไฟล์รายการ SKU
-  return `<div class="border-t px-4 py-4" style="border-color:var(--border); background:#f8fafc;">
+  const listing = importPreview && importPreview.mode === 'listing';
+  return `<div class="px-4 py-3" style="background:#f8fafc;">
+      <div class="${listing ? 'hidden' : ''}">
       <div class="flex items-center gap-2 mb-3">
         <i data-lucide="file-spreadsheet" class="w-4 h-4 text-cyan-600"></i>
         <p class="font-semibold text-sm">นำเข้า Excel ของร้าน <span class="text-brand-700">${esc(shop.platform)} · ${esc(shop.code)}</span></p>
@@ -1541,6 +1543,7 @@ function checkImportBox(shop){
           <p class="flex-1 min-w-0 text-sm text-slate-500">ลากไฟล์ <b class="text-slate-600">.xlsx .xls .csv</b> มาวาง — ดู Preview ก่อนนำเข้า</p>
           <button type="button" id="importBrowseBtn" class="btn btn-soft btn-sm flex-shrink-0"><i data-lucide="folder-up" class="w-4 h-4"></i>เลือกไฟล์</button>
         </div>
+      </div>
       </div>
       <div id="importBusy" class="hidden mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-xl p-3">
         <div class="flex items-center gap-3"><span class="inline-block h-5 w-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin"></span><span class="busyText text-sm font-medium">กำลังอ่านไฟล์...</span></div>
@@ -2278,28 +2281,30 @@ function showListingPreview(file, rows, headers, nickCol, parentCol, opts = {}){
   if(!$('#importResult')){ chkImportOpen = true; renderCheck(); }
   const shops = DB.shops.filter(s => s.platform === platform);
   const total = list.reduce((n, g) => n + g.items.length, 0);
+  const nFailSku = new Set(failed.map(f => f.baseSku)).size;
   $('#importResult').innerHTML = `
-    <div class="border rounded-xl p-4 fade-in" style="border-color:var(--border);">
-      <p class="font-semibold mb-1 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-brand-600"></i>ไฟล์สินค้าออนไลน์ · ${list.length} ร้าน · ${total} SKU</p>
-      <p class="text-xs text-slate-500 mb-3">${opts.auto ? '<b class="text-amber-700">มีไฟล์ใหม่จาก BigSeller — ตรวจร้านแล้วกด นำเข้า</b> · ' : ''}ใช้เฉพาะคอลัมน์ ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา — จับคู่ชื่อเล่นกับร้านในระบบ (ระบบจำไว้ครั้งต่อไป)</p>
-      <div class="border rounded-lg mb-3 overflow-x-auto" style="border-color:var(--border);">
-        <table class="data"><thead><tr><th>ชื่อเล่นในไฟล์</th><th>ร้านในระบบ</th><th class="text-right">SKU</th><th class="text-right">ไม่พบในระบบ</th><th>ตัวอย่าง</th></tr></thead><tbody>
-          ${list.map(g => `<tr>
-            <td class="font-mono text-xs font-semibold">${esc(g.nick)}</td>
-            <td><select class="input !py-1 text-sm ${g.shopId ? '' : 'border-red-400'}" data-imp-nick="${esc(g.nick)}"><option value="">— เลือกร้าน —</option>${shops.map(s => `<option value="${s.id}" ${s.id === g.shopId ? 'selected' : ''}>${esc(s.platform)} / ${esc(s.code)}</option>`).join('')}<option value="skip" ${g.shopId === 'skip' ? 'selected' : ''}>ข้าม (ไม่นำเข้าร้านนี้)</option></select></td>
-            <td class="text-right badge-num">${g.items.length}</td>
-            <td class="text-right badge-num ${failed.some(f => f.nick === g.nick) ? 'text-red-600' : ''}">${new Set(failed.filter(f => f.nick === g.nick).map(f => f.baseSku)).size}</td>
-            <td class="text-xs text-slate-500 font-mono truncate max-w-[260px]">${g.items.slice(0, 4).map(it => esc(it.sku) + (it.price ? ' ฿' + it.price : '')).join(' · ')}${g.items.length > 4 ? ' …' : ''}</td>
-          </tr>`).join('')}
-        </tbody></table>
+    <div class="fade-in">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+        <p class="font-semibold text-sm flex items-center gap-1.5"><i data-lucide="cloud-download" class="w-4 h-4 text-brand-600"></i>${esc(file.name || 'ไฟล์สินค้าออนไลน์')}</p>
+        <span class="text-xs text-slate-500">${list.length} ร้าน · ${total} SKU${nFailSku ? ` · <span class="text-red-600">${nFailSku} SKU ไม่พบในระบบ → ไปหน้าแก้ SKU</span>` : ''}</span>
+        ${opts.auto ? '<span class="pill pill-progress text-[11px]">ไฟล์ใหม่</span>' : ''}
       </div>
-      ${failed.length ? `<p class="text-xs text-red-600 mb-2">SKU ไม่มีในระบบ / ไม่ถูกต้อง ${new Set(failed.map(f => f.baseSku)).size} SKU (${failed.length} แถว) — ไม่นำเข้า จะส่งไปหน้า "แก้ SKU นำเข้าไม่สำเร็จ"</p>` : ''}
-      <div class="flex gap-2 flex-wrap">
-        <label style="flex-basis:100%" class="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 cursor-pointer"><input type="checkbox" id="impMarkDone" checked> บันทึกสถานะ "ทำแล้ว" ให้ทุก SKU ในไฟล์ แยกตามร้าน</label>
-        <button id="importConfirm" class="btn btn-primary flex-1 py-2.5"><i data-lucide="download" class="w-4 h-4"></i>นำเข้า ${total} SKU · ${list.length} ร้าน</button>
-        <button id="importCancel" class="btn btn-ghost">ยกเลิก</button>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 mb-3">
+        ${list.map(g => { const nf = new Set(failed.filter(f => f.nick === g.nick).map(f => f.baseSku)).size; return `
+          <label class="flex items-center gap-1.5 bg-white border rounded-lg pl-2 pr-1 py-1 ${g.shopId ? '' : 'border-red-400'}" style="${g.shopId ? 'border-color:var(--border)' : ''}" title="${esc(g.items.slice(0, 6).map(it => it.sku + (it.price ? ' ฿' + it.price : '')).join(' · '))}">
+            <span class="font-mono text-[11px] font-semibold text-slate-600 truncate flex-1">${esc(g.nick.replace(/^SP-/, ''))}</span>
+            <span class="text-[11px] text-slate-400 badge-num">${g.items.length}${nf ? `<span class="text-red-500">+${nf}</span>` : ''}</span>
+            <select class="text-xs bg-transparent border-0 py-0.5 pr-0 max-w-[5.5rem] font-semibold text-brand-700" data-imp-nick="${esc(g.nick)}"><option value="">เลือก…</option>${shops.map(s => `<option value="${s.id}" ${s.id === g.shopId ? 'selected' : ''}>${esc(s.code)}</option>`).join('')}<option value="skip" ${g.shopId === 'skip' ? 'selected' : ''}>ข้าม</option></select>
+          </label>`; }).join('')}
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex items-center gap-1.5 text-xs text-emerald-700 cursor-pointer mr-auto"><input type="checkbox" id="impMarkDone" checked> บันทึก "ทำแล้ว" แยกตามร้าน</label>
+        <button id="importCancel" class="btn btn-ghost btn-sm">ยกเลิก</button>
+        <button id="importConfirm" class="btn btn-primary btn-sm"><i data-lucide="download" class="w-4 h-4"></i>นำเข้า ${total} SKU</button>
       </div>
     </div>`;
+  const head = $('#importResult').parentElement.firstElementChild; // ซ่อนหัวข้อ + ช่องลากไฟล์ ไม่ต้องใช้ตอนเทียบไฟล์ BigSeller
+  if(head && head.querySelector('#dropZone')) head.classList.add('hidden');
   if(window.lucide) lucide.createIcons();
 }
 /* ดึงไฟล์ที่ส่วนขยาย "ชิวเกิน" อัปขึ้น Supabase มาเทียบกับหน้าเช็ก SKU
