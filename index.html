@@ -1669,21 +1669,20 @@ function renderCheck(){
       <div class="p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="seg">${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="${pl===checkState.platform?'on':''}" data-chk-platform="${pl}">${pl}</button>`).join('')}</div>
+          <div class="flex flex-wrap gap-2 sm:ml-auto">
           ${curShop && curShop.platform === 'Shopee' ? `<button class="btn btn-sm btn-primary" data-bs-pull title="ดึงไฟล์สินค้าล่าสุดที่ชิวเกินอัปขึ้น Supabase มาเทียบกับรายการนี้ (ทุกร้าน Shopee)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>` : ''}
           ${curShop ? `<button class="btn btn-sm ${chkImportOpen||importPreview?'btn-primary':'btn-soft'}" data-toggle-import><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>นำเข้า Excel · ${esc(curShop.code)}</button>` : ''}
+          </div>
         </div>
-        <div>
-          <p class="text-[11px] font-semibold tracking-wide text-slate-400 mb-2">${isAdmin()?'ร้าน':'ร้านของฉัน'}</p>
-          <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-[11px] font-semibold tracking-wide text-slate-400 mr-1">${isAdmin()?'ร้าน':'ร้านของฉัน'} <span class="font-normal">(ทำแล้ว/ทั้งหมด)</span></span>
             ${shops.map(sh=>{
               const on = sh.id===checkState.shopId;
               const done = DB.worklogs.filter(w=>w.shop_id===sh.id && w.platform===checkState.platform && w.status==='done').length;
-              return `<button class="shop-pick ${on?'on':''}" data-chk-shop="${sh.id}" title="${esc(sh.name)}"><span class="tick">${on?'✓':''}</span>${esc(sh.code)}<span class="cnt">${done}</span></button>`;
+              return `<button class="shop-pick ${on?'on':''}" data-chk-shop="${sh.id}" title="${esc(sh.name)} · ทำแล้ว ${done} จาก ${statusCounts.all} SKU"><span class="tick">${on?'✓':''}</span>${esc(sh.code)}<span class="cnt">${done}/${statusCounts.all}</span></button>`;
             }).join('')}
-          </div>
         </div>
       </div>
-      ${(chkImportOpen||importPreview) ? checkImportBox(curShop) : ''}
       <div class="border-t px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-3" style="border-color:var(--border);">
         <div class="relative flex-1 min-w-0">
           <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
@@ -1696,6 +1695,8 @@ function renderCheck(){
         </button>
       </div>
     </div></div>
+
+    ${(chkImportOpen||importPreview) ? `<div class="card overflow-hidden">${checkImportBox(curShop)}</div>` : ''}
 
     <div class="card overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--border);">
@@ -2382,7 +2383,7 @@ function confirmListingImport(){
   if(p.bs_at) DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, p.bs_at);
   saveDB();
   toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
-  importPreview = null; checkState.selected.clear(); navTo(nFail ? 'importfix' : 'check');
+  importPreview = null; listingArgs = null; chkImportOpen = false; checkState.selected.clear(); navTo(nFail ? 'importfix' : 'check');
 }
 
 /* ---------- Import failures (fix page) ---------- */
@@ -4453,7 +4454,7 @@ document.addEventListener('click', e=>{
     downloadTextFile(csv, 'import-failed-audit.csv');
     toast('Export รายการนำเข้าไม่สำเร็จแล้ว');
   }
-  else if(e.target.id==='importCancel' || e.target.closest('#importCancel')){ if(importPreview && importPreview.bs_at){ DB.meta = DB.meta || {}; DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, importPreview.bs_at); saveDB(); } importPreview=null; $('#importResult').innerHTML=''; $('#importFile').value=''; }
+  else if(e.target.id==='importCancel' || e.target.closest('#importCancel')){ if(importPreview && importPreview.bs_at){ DB.meta = DB.meta || {}; DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, importPreview.bs_at); saveDB(); } if(importPreview && importPreview.mode === 'listing'){ listingArgs = null; chkImportOpen = false; importPreview = null; renderCheck(); return; } importPreview=null; $('#importResult').innerHTML=''; $('#importFile').value=''; }
   else if(e.target.id==='copyReportAll' || e.target.closest('#copyReportAll')){
     const txt=buildReportText(reportDate, isAdmin()?null:currentUser.id);
     copyText(txt).then(ok=>toast(ok?'คัดลอกรายงานแล้ว ✓ — Paste ลง LINE ได้เลย':'คัดลอกไม่สำเร็จ', ok?'success':'error'));
