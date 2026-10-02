@@ -2249,7 +2249,7 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
   const priceCol = headers.find(h => norm(h) === 'ราคา');
   const selectedShop = DB.shops.find(s => s.id === importSelectedShopId) || DB.shops[0];
   const platform = selectedShop ? selectedShop.platform : 'Shopee';
-  const known = new Set(DB.products.map(x => String(x.sku || '').trim().toUpperCase()));
+  const known = knownSkuSet();
   const groups = new Map(), failed = [];
   rows.forEach((r, i) => {
     if(!rowHasData(r)) return;
@@ -2259,7 +2259,8 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
     if(problem){ failed.push({row: i + 2, sku: raw, baseSku: sku, reason: problem}); return; }
     if(!groups.has(nick)) groups.set(nick, {nick, shopId: shopForNick(nick, platform), items: new Map()});
     const g = groups.get(nick), key = sku.toUpperCase();
-    if(!g.items.has(key)) g.items.set(key, {sku, item_ids: [], price: null, exists: known.has(key)});
+    if(!known.has(key)){ failed.push({row: i + 2, sku: raw, baseSku: sku, nick, reason: 'ไม่พบ SKU ในระบบ'}); return; }
+    if(!g.items.has(key)) g.items.set(key, {sku, item_ids: [], price: null});
     const it = g.items.get(key);
     const itemId = itemCol ? String(r[itemCol] || '').trim() : '';
     if(itemId && !it.item_ids.includes(itemId)) it.item_ids.push(itemId);
@@ -2275,17 +2276,17 @@ function showListingPreview(file, rows, headers, nickCol, parentCol){
       <p class="font-semibold mb-1 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-brand-600"></i>ไฟล์สินค้าออนไลน์ · ${list.length} ร้าน · ${total} SKU</p>
       <p class="text-xs text-slate-500 mb-3">ใช้เฉพาะคอลัมน์ ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา — จับคู่ชื่อเล่นกับร้านในระบบ (ระบบจำไว้ครั้งต่อไป)</p>
       <div class="border rounded-lg mb-3 overflow-x-auto" style="border-color:var(--border);">
-        <table class="data"><thead><tr><th>ชื่อเล่นในไฟล์</th><th>ร้านในระบบ</th><th class="text-right">SKU</th><th class="text-right">ใหม่</th><th>ตัวอย่าง</th></tr></thead><tbody>
+        <table class="data"><thead><tr><th>ชื่อเล่นในไฟล์</th><th>ร้านในระบบ</th><th class="text-right">SKU</th><th class="text-right">ไม่พบในระบบ</th><th>ตัวอย่าง</th></tr></thead><tbody>
           ${list.map(g => `<tr>
             <td class="font-mono text-xs font-semibold">${esc(g.nick)}</td>
             <td><select class="input !py-1 text-sm ${g.shopId ? '' : 'border-red-400'}" data-imp-nick="${esc(g.nick)}"><option value="">— เลือกร้าน —</option>${shops.map(s => `<option value="${s.id}" ${s.id === g.shopId ? 'selected' : ''}>${esc(s.platform)} / ${esc(s.code)}</option>`).join('')}</select></td>
             <td class="text-right badge-num">${g.items.length}</td>
-            <td class="text-right badge-num">${g.items.filter(it => !it.exists).length}</td>
+            <td class="text-right badge-num ${failed.some(f => f.nick === g.nick) ? 'text-red-600' : ''}">${new Set(failed.filter(f => f.nick === g.nick).map(f => f.baseSku)).size}</td>
             <td class="text-xs text-slate-500 font-mono truncate max-w-[260px]">${g.items.slice(0, 4).map(it => esc(it.sku) + (it.price ? ' ฿' + it.price : '')).join(' · ')}${g.items.length > 4 ? ' …' : ''}</td>
           </tr>`).join('')}
         </tbody></table>
       </div>
-      ${failed.length ? `<p class="text-xs text-red-600 mb-2">Parent SKU ไม่ถูกต้อง ${failed.length} แถว — จะส่งไปหน้า "แก้ SKU นำเข้าไม่สำเร็จ"</p>` : ''}
+      ${failed.length ? `<p class="text-xs text-red-600 mb-2">SKU ไม่มีในระบบ / ไม่ถูกต้อง ${new Set(failed.map(f => f.baseSku)).size} SKU (${failed.length} แถว) — ไม่นำเข้า จะส่งไปหน้า "แก้ SKU นำเข้าไม่สำเร็จ"</p>` : ''}
       <div class="flex gap-2 flex-wrap">
         <label style="flex-basis:100%" class="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 cursor-pointer"><input type="checkbox" id="impMarkDone" checked> บันทึกสถานะ "ทำแล้ว" ให้ทุก SKU ในไฟล์ แยกตามร้าน</label>
         <button id="importConfirm" class="btn btn-primary flex-1 py-2.5"><i data-lucide="download" class="w-4 h-4"></i>นำเข้า ${total} SKU · ${list.length} ร้าน</button>
@@ -2302,7 +2303,7 @@ function confirmListingImport(){
   const markBox = document.getElementById('impMarkDone'), markDone = !markBox || markBox.checked;
   const bySku = new Map(DB.products.map(x => [String(x.sku || '').trim().toUpperCase(), x]));
   DB.meta = DB.meta || {}; DB.meta.shop_alias = {...(DB.meta.shop_alias || {})};
-  let added = 0, checked = 0, marked = 0; const denied = [], done = [];
+  let checked = 0, marked = 0; const denied = [], done = [];
   p.groups.forEach(g => {
     const shop = DB.shops.find(s => s.id === g.shopId); if(!shop) return;
     DB.meta.shop_alias[g.nick] = shop.id;
@@ -2310,8 +2311,7 @@ function confirmListingImport(){
     let n = 0;
     g.items.forEach(it => {
       const key = it.sku.toUpperCase();
-      let pr = bySku.get(key);
-      if(!pr){ pr = {id: uid(), sku: it.sku, name: '', brand: '', created_at: at, active: true}; DB.products.push(pr); bySku.set(key, pr); added++; }
+      const pr = bySku.get(key); if(!pr) return;
       if(pr.active === false) pr.active = true;
       pr.excel_checks = {...(pr.excel_checks || {}), [shop.id]: {at, by: currentUser.id, file: p.file_name || '', item_ids: it.item_ids, price: it.price}};
       pr.updated_at = at; checked++;
@@ -2325,10 +2325,11 @@ function confirmListingImport(){
     done.push(shop.code);
     logHistory('import_listing', shop.platform + '/' + shop.code + ': ' + g.items.length + ' SKU' + (n ? ', ทำแล้ว +' + n : '') + ' จากไฟล์ ' + (p.file_name || '-'));
   });
+  p.failed.forEach(f => { const g = p.groups.find(x => x.nick === f.nick); if(g) f.shop_id = g.shopId; });
   const nFail = recordImportFailures(p);
   saveDB();
-  toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (added ? ' · SKU ใหม่ ' + added : '') + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
-  importPreview = null; checkState.selected.clear(); navTo('check');
+  toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
+  importPreview = null; checkState.selected.clear(); navTo(nFail ? 'importfix' : 'check');
 }
 
 /* ---------- Import failures (fix page) ---------- */
@@ -2360,12 +2361,12 @@ function recordImportFailures(preview){
   const failed = (preview && Array.isArray(preview.failed)) ? preview.failed : [];
   if(!failed.length) return 0;
   const shop = DB.shops.find(s => s.id === preview.shop_id);
-  DB.import_audits = (DB.import_audits || []).concat(failed.map(it => ({
+  DB.import_audits = (DB.import_audits || []).concat(failed.map(it => { const sh = (it.shop_id && DB.shops.find(s => s.id === it.shop_id)) || shop; return {
     id: uid(), file_name: preview.file_name || '', row: it.row, rows: [it.row], sku: it.sku || '', base_sku: it.baseSku || '',
     name: it.name || '', brand: it.brand || '', reason: it.reason, mode: preview.mode,
-    platform: shop ? shop.platform : (preview.platform || ''), shop_code: shop ? shop.code : '',
+    platform: sh ? sh.platform : (preview.platform || ''), shop_code: sh ? sh.code : '',
     status: 'open', imported_at: nowISO(), created_by: currentUser ? currentUser.id : null
-  })));
+  }; }));
   dedupeImportAudits();
   DB.import_audits = DB.import_audits.slice(-1000);
   const distinct = new Set(failed.map(failureKey)).size;
