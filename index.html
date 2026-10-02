@@ -2069,6 +2069,9 @@ function handleImportFile(file){
       const rows = selectedSheet.rows || [];
       if(!rows.length){ toast('ไฟล์ว่างหรือไม่มีข้อมูล','error'); return; }
       const headers = Object.keys(rows[0]);
+      const nickCol = headers.find(h => normalizeHeader(h).replace(/\s+/g,'') === 'ชื่อเล่นร้านค้า');
+      const parentCol = headers.find(h => normalizeHeader(h).replace(/\s+/g,'') === 'parentsku');
+      if(mode === 'sku' && nickCol && parentCol){ showListingPreview(file, rows, headers, nickCol, parentCol); return; }
       const skuCol = headers.find(h => normalizeHeader(h).replace(/[^a-z]/g,'') === 'sku') || headers.find(h => {
         const n = normalizeHeader(h);
         if(/(ลูกค้า|คำสั่ง|ใบแจ้งหนี้|ไปรษณีย์|ประเทศ|จังหวัด|เมือง|เขต|ตำบล|พัสดุ|โลจิสติกส์|ผู้ขาย|สกุลเงิน|ชำระ|ยกเลิก|หมายเลข|เบอร์|รหัส.*ลูกค้า|รหัส.*ผู้|รหัส.*ไปรษณีย์)/.test(n)) return false;
@@ -2226,6 +2229,106 @@ function handleImportFile(file){
     toast('อ่านไฟล์ไม่สำเร็จ กรุณาลองเลือกไฟล์ใหม่อีกครั้ง','error');
   };
   reader.readAsArrayBuffer(file);
+}
+
+/* ---------- ไฟล์ "สินค้าออนไลน์" (export หลายร้านในไฟล์เดียว) — ใช้เฉพาะคอลัมน์สีเขียว: ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา ---------- */
+function shopForNick(nick, platform){
+  const alias = (DB.meta && DB.meta.shop_alias) || {};
+  if(alias[nick] && DB.shops.some(s => s.id === alias[nick])) return alias[nick];
+  const bare = String(nick).replace(/^[A-Z]{2}-/i, '').toUpperCase();
+  const shops = DB.shops.filter(s => s.platform === platform);
+  const exact = shops.find(s => String(s.code).toUpperCase() === bare || String(s.name || '').toUpperCase() === bare);
+  if(exact) return exact.id;
+  const inOrder = (code, word) => { let i = 0; for(const ch of word){ if(ch === code[i]) i++; } return i === code.length; };
+  const near = shops.filter(s => { const c = String(s.code).toUpperCase(); return c[0] === bare[0] && inOrder(c, bare); });
+  return near.length === 1 ? near[0].id : '';
+}
+function showListingPreview(file, rows, headers, nickCol, parentCol){
+  const norm = h => String(h || '').toLowerCase().replace(/\s+/g, '');
+  const itemCol = headers.find(h => norm(h) === 'itemid');
+  const priceCol = headers.find(h => norm(h) === 'ราคา');
+  const selectedShop = DB.shops.find(s => s.id === importSelectedShopId) || DB.shops[0];
+  const platform = selectedShop ? selectedShop.platform : 'Shopee';
+  const known = new Set(DB.products.map(x => String(x.sku || '').trim().toUpperCase()));
+  const groups = new Map(), failed = [];
+  rows.forEach((r, i) => {
+    if(!rowHasData(r)) return;
+    const nick = String(r[nickCol] || '').trim() || '(ไม่ระบุร้าน)';
+    const raw = String(r[parentCol] || '').trim(), sku = normalizeBaseSku(raw);
+    const problem = skuProblem(sku);
+    if(problem){ failed.push({row: i + 2, sku: raw, baseSku: sku, reason: problem}); return; }
+    if(!groups.has(nick)) groups.set(nick, {nick, shopId: shopForNick(nick, platform), items: new Map()});
+    const g = groups.get(nick), key = sku.toUpperCase();
+    if(!g.items.has(key)) g.items.set(key, {sku, item_ids: [], price: null, exists: known.has(key)});
+    const it = g.items.get(key);
+    const itemId = itemCol ? String(r[itemCol] || '').trim() : '';
+    if(itemId && !it.item_ids.includes(itemId)) it.item_ids.push(itemId);
+    const price = priceCol ? Number(String(r[priceCol] ?? '').replace(/[^0-9.]/g, '')) : NaN;
+    if(price > 0 && (it.price === null || price < it.price)) it.price = price;
+  });
+  const list = [...groups.values()].map(g => ({...g, items: [...g.items.values()]}));
+  importPreview = {mode: 'listing', file_name: file.name, groups: list, failed, platform, shop_id: selectedShop ? selectedShop.id : null};
+  const shops = DB.shops.filter(s => s.platform === platform);
+  const total = list.reduce((n, g) => n + g.items.length, 0);
+  $('#importResult').innerHTML = `
+    <div class="border rounded-xl p-4 fade-in" style="border-color:var(--border);">
+      <p class="font-semibold mb-1 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-brand-600"></i>ไฟล์สินค้าออนไลน์ · ${list.length} ร้าน · ${total} SKU</p>
+      <p class="text-xs text-slate-500 mb-3">ใช้เฉพาะคอลัมน์ ชื่อเล่นร้านค้า · Item ID · Parent SKU · ราคา — จับคู่ชื่อเล่นกับร้านในระบบ (ระบบจำไว้ครั้งต่อไป)</p>
+      <div class="border rounded-lg mb-3 overflow-x-auto" style="border-color:var(--border);">
+        <table class="data"><thead><tr><th>ชื่อเล่นในไฟล์</th><th>ร้านในระบบ</th><th class="text-right">SKU</th><th class="text-right">ใหม่</th><th>ตัวอย่าง</th></tr></thead><tbody>
+          ${list.map(g => `<tr>
+            <td class="font-mono text-xs font-semibold">${esc(g.nick)}</td>
+            <td><select class="input !py-1 text-sm ${g.shopId ? '' : 'border-red-400'}" data-imp-nick="${esc(g.nick)}"><option value="">— เลือกร้าน —</option>${shops.map(s => `<option value="${s.id}" ${s.id === g.shopId ? 'selected' : ''}>${esc(s.platform)} / ${esc(s.code)}</option>`).join('')}</select></td>
+            <td class="text-right badge-num">${g.items.length}</td>
+            <td class="text-right badge-num">${g.items.filter(it => !it.exists).length}</td>
+            <td class="text-xs text-slate-500 font-mono truncate max-w-[260px]">${g.items.slice(0, 4).map(it => esc(it.sku) + (it.price ? ' ฿' + it.price : '')).join(' · ')}${g.items.length > 4 ? ' …' : ''}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>
+      ${failed.length ? `<p class="text-xs text-red-600 mb-2">Parent SKU ไม่ถูกต้อง ${failed.length} แถว — จะส่งไปหน้า "แก้ SKU นำเข้าไม่สำเร็จ"</p>` : ''}
+      <div class="flex gap-2 flex-wrap">
+        <label style="flex-basis:100%" class="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 cursor-pointer"><input type="checkbox" id="impMarkDone" checked> บันทึกสถานะ "ทำแล้ว" ให้ทุก SKU ในไฟล์ แยกตามร้าน</label>
+        <button id="importConfirm" class="btn btn-primary flex-1 py-2.5"><i data-lucide="download" class="w-4 h-4"></i>นำเข้า ${total} SKU · ${list.length} ร้าน</button>
+        <button id="importCancel" class="btn btn-ghost">ยกเลิก</button>
+      </div>
+    </div>`;
+  if(window.lucide) lucide.createIcons();
+}
+function confirmListingImport(){
+  const p = importPreview, at = nowISO(), today = todayISO();
+  document.querySelectorAll('[data-imp-nick]').forEach(sel => { const g = p.groups.find(x => x.nick === sel.dataset.impNick); if(g) g.shopId = sel.value; });
+  const missing = p.groups.filter(g => !g.shopId);
+  if(missing.length){ toast('เลือกร้านให้ ' + missing.map(g => g.nick).join(', ') + ' ก่อน', 'error'); return; }
+  const markBox = document.getElementById('impMarkDone'), markDone = !markBox || markBox.checked;
+  const bySku = new Map(DB.products.map(x => [String(x.sku || '').trim().toUpperCase(), x]));
+  DB.meta = DB.meta || {}; DB.meta.shop_alias = {...(DB.meta.shop_alias || {})};
+  let added = 0, checked = 0, marked = 0; const denied = [], done = [];
+  p.groups.forEach(g => {
+    const shop = DB.shops.find(s => s.id === g.shopId); if(!shop) return;
+    DB.meta.shop_alias[g.nick] = shop.id;
+    if(!isAdmin() && !canAccessShop(shop.id)){ denied.push(shop.code); return; }
+    let n = 0;
+    g.items.forEach(it => {
+      const key = it.sku.toUpperCase();
+      let pr = bySku.get(key);
+      if(!pr){ pr = {id: uid(), sku: it.sku, name: '', brand: '', created_at: at, active: true}; DB.products.push(pr); bySku.set(key, pr); added++; }
+      if(pr.active === false) pr.active = true;
+      pr.excel_checks = {...(pr.excel_checks || {}), [shop.id]: {at, by: currentUser.id, file: p.file_name || '', item_ids: it.item_ids, price: it.price}};
+      pr.updated_at = at; checked++;
+      if(!markDone) return;
+      const w = getWorklog(pr.id, shop.platform, shop.id);
+      if(w && w.status === 'done') return;
+      if(w){ w.status = 'done'; w.user_id = currentUser.id; w.work_date = today; w.updated_at = at; }
+      else DB.worklogs.push({id: uid(), product_id: pr.id, platform: shop.platform, shop_id: shop.id, user_id: currentUser.id, status: 'done', bigseller_done: false, bigseller_by: null, bigseller_at: null, work_date: today, created_at: at, updated_at: at, source: 'import'});
+      marked++; n++;
+    });
+    done.push(shop.code);
+    logHistory('import_listing', shop.platform + '/' + shop.code + ': ' + g.items.length + ' SKU' + (n ? ', ทำแล้ว +' + n : '') + ' จากไฟล์ ' + (p.file_name || '-'));
+  });
+  const nFail = recordImportFailures(p);
+  saveDB();
+  toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (added ? ' · SKU ใหม่ ' + added : '') + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
+  importPreview = null; checkState.selected.clear(); navTo('check');
 }
 
 /* ---------- Import failures (fix page) ---------- */
@@ -4214,6 +4317,7 @@ document.addEventListener('click', e=>{
   }
   else if(e.target.id==='importConfirm' || e.target.closest('#importConfirm')){
     if(!importPreview) return;
+    if(importPreview.mode === 'listing'){ confirmListingImport(); return; }
     if(importPreview.mode === 'sales'){
       const replaceBox = document.getElementById('salesReplace');
       if(!replaceBox || replaceBox.checked){ DB.sales = (DB.sales||[]).filter(r => String(r.shop_id||'') !== String(importPreview.shop_id||'')); }
