@@ -1736,6 +1736,7 @@ function renderCheck(){
     </div>
   </div>`;
   if(keepImportHtml && $('#importResult')) $('#importResult').innerHTML = keepImportHtml;
+  else if(importPreview && importPreview.mode === 'listing' && listingArgs && $('#importResult')) showListingPreview(...listingArgs); // กลับมาหน้านี้ → แสดงตารางเทียบเดิมอีกครั้ง
   if(window.lucide) lucide.createIcons();
   maybeAutoPullBigSeller(); // มีไฟล์ใหม่จากชิวเกิน → เปิดตารางเทียบรอให้กดนำเข้า
 }
@@ -2245,7 +2246,9 @@ function shopForNick(nick, platform){
   const near = shops.filter(s => { const c = String(s.code).toUpperCase(); return c[0] === bare[0] && inOrder(c, bare); });
   return near.length === 1 ? near[0].id : '';
 }
+let listingArgs = null; // จำไว้ เปลี่ยนหน้าแล้วกลับมาจะได้แสดงตารางเทียบเดิม
 function showListingPreview(file, rows, headers, nickCol, parentCol, opts = {}){
+  listingArgs = [file, rows, headers, nickCol, parentCol, opts];
   const norm = h => String(h || '').toLowerCase().replace(/\s+/g, '');
   const itemCol = headers.find(h => norm(h) === 'itemid');
   const priceCol = headers.find(h => norm(h) === 'ราคา');
