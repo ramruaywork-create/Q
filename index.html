@@ -165,7 +165,7 @@ tailwind.config = {
       <span id="syncLabel" class="text-xs text-slate-500 flex items-center whitespace-nowrap"></span>
       <span id="todayLabel" class="text-xs text-slate-400 hidden sm:block"></span>
     </header>
-    <main id="view" class="flex-1 p-4 md:p-6 overflow-x-hidden"></main>
+    <main id="view" class="flex-1 p-4 md:p-6 overflow-x-clip"></main>
   </div>
 </div>
 
@@ -3735,7 +3735,7 @@ function renderBaseSku(){
         <button class="btn btn-ghost btn-sm" data-rs-bpage="-1" ${rsku.bpage <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
         <button class="btn btn-ghost btn-sm" data-rs-bpage="1" ${rsku.bpage + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
       </div>
-    </div>
+    </div></div>
     <div class="card overflow-hidden"><div class="overflow-x-auto">
       <table class="data">
         <thead><tr><th>รหัสสินค้า</th><th>ตารางไซส์</th><th>แบรนด์</th></tr></thead>
@@ -3747,7 +3747,7 @@ function renderBaseSku(){
 function renderRemoteSku(){
   const modeBar = `<div class="inline-flex gap-1 p-1 rounded-xl bg-slate-100">${[['base','รหัสสินค้า'],['sku','SKU']].map(([k, l]) => `<button class="px-4 py-1.5 rounded-lg text-sm font-semibold ${rsku.mode === k ? 'bg-white shadow text-brand-700' : 'text-slate-500'}" data-rs-mode="${k}">${l}</button>`).join('')}</div>`;
   if(rsku.mode === 'base'){
-    $('#view').innerHTML = `<div class="fade-in space-y-4">${modeBar}${renderBaseSku()}</div>`;
+    $('#view').innerHTML = `<div class="fade-in space-y-4"><div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">${modeBar}${renderBaseSku()}</div>`;
     if(window.lucide) lucide.createIcons();
     return;
   }
@@ -3758,6 +3758,7 @@ function renderRemoteSku(){
     : `<span class="${f === 'sku_merchant' ? 'font-mono font-semibold text-brand-700' : 'text-slate-600'}">${esc(r[f] || '') || '<span class="text-slate-300">-</span>'}</span>`;
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
+    <div class="sticky z-30 space-y-3 pt-2 pb-3 -mt-2" style="top:53px;background:var(--bg)">
     ${modeBar}
     <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
       <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหา SKU / แบรนด์ / GTIN แล้วกด Enter" value="${esc(rsku.q)}">
@@ -3767,7 +3768,7 @@ function renderRemoteSku(){
         <button class="btn btn-ghost btn-sm" data-rs-page="1" ${rsku.page + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
         <button class="btn btn-ghost btn-sm" data-rs-reload title="โหลดใหม่"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
       </div>
-    </div>
+    </div></div>
     ${admin ? `<div class="card p-4">
       <p class="font-semibold text-slate-700 mb-2 flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>เพิ่ม SKU ใหม่</p>
       <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2">
