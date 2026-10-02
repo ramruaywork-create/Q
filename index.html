@@ -1541,7 +1541,6 @@ function checkImportBox(shop){
           <p class="flex-1 min-w-0 text-sm text-slate-500">ลากไฟล์ <b class="text-slate-600">.xlsx .xls .csv</b> มาวาง — ดู Preview ก่อนนำเข้า</p>
           <button type="button" id="importBrowseBtn" class="btn btn-soft btn-sm flex-shrink-0"><i data-lucide="folder-up" class="w-4 h-4"></i>เลือกไฟล์</button>
         </div>
-        <button type="button" data-bs-pull class="btn btn-primary flex-shrink-0" title="ไฟล์ที่ส่วนขยายชิวเกินอัปขึ้น Supabase ล่าสุด (รอบเดียวกันรวมให้)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>
       </div>
       <div id="importBusy" class="hidden mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-xl p-3">
         <div class="flex items-center gap-3"><span class="inline-block h-5 w-5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin"></span><span class="busyText text-sm font-medium">กำลังอ่านไฟล์...</span></div>
@@ -1670,6 +1669,7 @@ function renderCheck(){
       <div class="p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="seg">${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="${pl===checkState.platform?'on':''}" data-chk-platform="${pl}">${pl}</button>`).join('')}</div>
+          ${curShop && curShop.platform === 'Shopee' ? `<button class="btn btn-sm btn-primary" data-bs-pull title="ดึงไฟล์สินค้าล่าสุดที่ชิวเกินอัปขึ้น Supabase มาเทียบกับรายการนี้ (ทุกร้าน Shopee)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>` : ''}
           ${curShop ? `<button class="btn btn-sm ${chkImportOpen||importPreview?'btn-primary':'btn-soft'}" data-toggle-import><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>นำเข้า Excel · ${esc(curShop.code)}</button>` : ''}
         </div>
         <div>
@@ -2301,6 +2301,7 @@ const BS_UPLOAD_URL = 'https://ycknodfcpgvmsaegaxcv.supabase.co/functions/v1/big
 async function pullBigSeller(){
   if(!apiMode || !getToken()){ toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
   if(!window.XLSX){ toast('ไลบรารี Excel ยังไม่พร้อม ลองใหม่อีกครั้ง', 'error'); return; }
+  if(!$('#importResult')){ chkImportOpen = true; renderCheck(); } // กดจากแถบด้านบน → เปิดกล่องนำเข้าให้ก่อน
   showImportBusy('กำลังดึงไฟล์จาก BigSeller...');
   try{
     const r = await fetch(BS_UPLOAD_URL + '?a=list', {cache: 'no-store', headers: {'X-Session': getToken()}});
