@@ -1653,7 +1653,6 @@ function renderCheck(){
   });
   if(checkState.status!=='all') products = products.filter(p => { const w = getWorklog(p.id, checkState.platform, checkState.shopId); return (w?w.status:'pending') === checkState.status; });
   const totalFound = products.length;
-  products = products.slice(0,500);
   const keepImportHtml = importPreview ? ($('#importResult')?.innerHTML || '') : '';
   const curShop = shops.find(sh=>sh.id===checkState.shopId);
   const statusCounts = (() => {
@@ -1703,7 +1702,7 @@ function renderCheck(){
 
     <div class="card overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--border);">
-        <p class="text-sm text-slate-500">พบ <b class="badge-num">${totalFound}</b> รายการ${totalFound>500?' (แสดง 500 แรก — พิมพ์ค้นหาให้แคบลง)':''} · กำลังดู <b>${esc(checkState.platform)} / ${esc(shopById(checkState.shopId)?.code||'-')}</b></p>
+        <p class="text-sm text-slate-500">พบ <b class="badge-num">${totalFound}</b> รายการ · กำลังดู <b>${esc(checkState.platform)} / ${esc(shopById(checkState.shopId)?.code||'-')}</b></p>
         <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer"><input type="checkbox" id="selAll" class="w-4 h-4"> เลือกทั้งหมด</label>
       </div>
       <div class="overflow-x-auto">
