@@ -1709,17 +1709,18 @@ function renderCheck(){
       <div class="overflow-x-auto">
       <table class="data">
         <thead><tr>
-          <th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
+          <th style="width:44px;" class="text-right">#</th><th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
           <th style="width:140px;">ดำเนินการ</th>
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="8" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
-          products.map(p=>{
+          ${products.length===0?'<tr><td colspan="9" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
+          products.map((p, rowNo)=>{
             const w = getWorklog(p.id, checkState.platform, checkState.shopId);
             const st = w?w.status:'pending';
             if(checkState.status!=='all' && checkState.status!==st) return '';
             const checked = checkState.selected.has(p.id)?'checked':'';
             return `<tr>
+              <td class="text-right text-xs text-slate-400 badge-num">${rowNo + 1}</td>
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
               <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
