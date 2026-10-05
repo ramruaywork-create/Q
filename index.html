@@ -100,9 +100,86 @@ tailwind.config = {
   .task-img{ width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; cursor:zoom-in; padding:0; }
   .task-img img{ width:100%; height:100%; object-fit:cover; }
   .task-img-gone{ cursor:default; }
+
+  /* ---------- ธีมมืด: html.dark (สลับด้วยปุ่มพระจันทร์บนแถบหัว · จำค่าไว้ใน localStorage) ---------- */
+  html.dark{ color-scheme:dark; --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --accent:#0d9488; --border:rgba(148,163,184,.18); }
+  html.dark .card{ box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  html.dark #loginScreen{ background:var(--bg) !important; }
+  html.dark .bg-white{ background-color:var(--card); }
+  html.dark .bg-slate-50{ background-color:#172033; }
+  html.dark .bg-slate-100{ background-color:#263347; }
+  html.dark .bg-slate-200{ background-color:#334155; }
+  html.dark [class*="hover:bg-slate-"]:hover, html.dark [class*="hover:bg-white"]:hover{ background-color:#263347; }
+  html.dark .text-slate-900, html.dark .text-slate-800{ color:#f1f5f9; }
+  html.dark .text-slate-700{ color:#e2e8f0; }
+  html.dark .text-slate-600{ color:#cbd5e1; }
+  html.dark .text-slate-500{ color:#94a3b8; }
+  html.dark .text-slate-400{ color:#8492a6; }
+  html.dark .text-slate-300{ color:#475569; }
+  html.dark .border-slate-200{ border-color:#334155; }
+  html.dark .border-slate-300{ border-color:#475569; }
+  html.dark .text-brand-600, html.dark .text-brand-700{ color:#5eead4; }
+  html.dark .bg-brand-50{ background-color:rgba(13,148,136,.15); }
+  html.dark .plat-name{ color:#cbd5e1 !important; } /* สีแบรนด์ของ Lazada/TikTok เข้มเกินไปบนพื้นมืด */
+  /* กล่องแจ้งเตือนโทนสี */
+  html.dark .bg-emerald-50, html.dark .bg-emerald-100, html.dark .bg-green-50{ background-color:rgba(22,163,74,.16); }
+  html.dark .bg-amber-50, html.dark .bg-amber-100, html.dark .bg-orange-100{ background-color:rgba(217,119,6,.18); }
+  html.dark .bg-red-50, html.dark .bg-red-100, html.dark .bg-rose-100{ background-color:rgba(220,38,38,.18); }
+  html.dark .bg-blue-50, html.dark .bg-sky-100, html.dark .bg-cyan-100, html.dark .bg-indigo-100{ background-color:rgba(37,99,235,.2); }
+  html.dark .bg-purple-50{ background-color:rgba(147,51,234,.2); }
+  html.dark .text-emerald-600, html.dark .text-emerald-700, html.dark .text-green-600, html.dark .text-green-700{ color:#6ee7b7; }
+  html.dark .text-amber-600, html.dark .text-amber-700, html.dark .text-amber-800, html.dark .text-orange-700{ color:#fcd34d; }
+  html.dark .text-red-500, html.dark .text-red-600, html.dark .text-red-700, html.dark .text-rose-700{ color:#fca5a5; }
+  html.dark .text-blue-600, html.dark .text-sky-700, html.dark .text-cyan-600, html.dark .text-cyan-700, html.dark .text-indigo-700{ color:#93c5fd; }
+  html.dark .border-emerald-200, html.dark .border-emerald-300{ border-color:rgba(22,163,74,.45); }
+  html.dark .border-amber-200{ border-color:rgba(217,119,6,.45); }
+  html.dark .border-red-200{ border-color:rgba(220,38,38,.45); }
+  /* ส่วนประกอบ */
+  html.dark .pill-done, html.dark .shop-done{ background:rgba(22,163,74,.22); color:#86efac; }
+  html.dark .pill-pending{ background:#263347; color:#94a3b8; }
+  html.dark .shop-pending{ background:#263347; color:#7c8aa0; }
+  html.dark .pill-progress, html.dark .shop-progress{ background:rgba(217,119,6,.25); color:#fcd34d; }
+  html.dark .pill-tiktok{ background:rgba(37,99,235,.25); color:#93c5fd; }
+  html.dark .pill-bigseller{ background:rgba(147,51,234,.25); color:#d8b4fe; }
+  html.dark .btn-soft{ color:#5eead4; background:rgba(13,148,136,.18); }
+  html.dark .btn-ghost{ background:#1e293b; }
+  html.dark .btn-ghost:hover{ color:#5eead4; }
+  html.dark .btn-danger{ background:rgba(220,38,38,.2); color:#fca5a5; }
+  html.dark .btn-danger:hover{ background:rgba(220,38,38,.32); }
+  html.dark .input, html.dark select.input{ background:#0f172a; border-color:#334155; color:var(--text); }
+  html.dark .input::placeholder{ color:#64748b; }
+  html.dark .nav-item{ color:#cbd5e1; }
+  html.dark .nav-item:hover{ background:rgba(13,148,136,.16); color:#5eead4; }
+  html.dark .nav-item.active{ color:#fff; }
+  html.dark table.data th{ background:#172033; color:#94a3b8; }
+  html.dark table.data td{ border-bottom-color:rgba(148,163,184,.1); }
+  html.dark table.data tr:hover td{ background:#172033; }
+  html.dark .toggle{ background:#475569; }
+  html.dark .toast{ background:#334155; }
+  html.dark .modal-bg{ background:rgba(0,0,0,.65); }
+  html.dark .seg{ background:#0f172a; }
+  html.dark .seg button{ color:#94a3b8; }
+  html.dark .seg button:hover{ color:#5eead4; }
+  html.dark .seg button.on{ background:#334155; color:#5eead4; box-shadow:none; }
+  html.dark .shop-pick{ background:#1e293b; color:#cbd5e1; }
+  html.dark .shop-pick.on{ background:rgba(13,148,136,.2); color:#5eead4; }
+  html.dark .shop-pick .tick{ border-color:#475569; }
+  html.dark .quick-btn{ background:#1e293b; color:#cbd5e1; }
+  html.dark .task-img{ background:#263347; }
+  html.dark ::-webkit-scrollbar-thumb{ background:#475569; }
+  /* แบนเนอร์ข่าวสารบนแดชบอร์ด + ปุ่ม/ป้ายพื้นขาวโปร่ง */
+  html.dark .official-news-shell, html.dark [class*="bg-[#f4f4f4]"]{ background-color:#1e293b; }
+  html.dark [class*="bg-[radial-gradient"]{ background-image:radial-gradient(circle at top, rgba(148,163,184,.16), rgba(30,41,59,0) 60%); }
+  html.dark [class*="bg-white/"]{ background-color:rgba(51,65,85,.9); }
+  html.dark [class*="border-slate-200/"]{ border-color:#475569; }
+  html.dark .bg-slate-300{ background-color:#475569; }
+  html.dark .bg-slate-900{ background-color:#0f172a; }
+  html.dark [class*="hover:bg-slate-800"]:hover{ background-color:#020617; }
 </style>
+<script>try{ if(localStorage.getItem('taskcheck_theme') === 'dark') document.documentElement.classList.add('dark'); }catch(e){}</script>
 </head>
 <body class="min-h-screen">
+<style>:where(html.dark) *, :where(html.dark) ::before, :where(html.dark) ::after{ border-color:#334155; }</style><!-- ต้องอยู่หลัง style ของ Tailwind (ใน head) เพื่อทับสีเส้นขอบเริ่มต้น โดยไม่ทับคลาส border-สี -->
 
 <!-- ============ LOGIN SCREEN ============ -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4" style="background:linear-gradient(135deg,#f0fdfa 0%,#ecfeff 50%,#f0f9ff 100%);">
@@ -164,6 +241,7 @@ tailwind.config = {
       <h2 id="pageTitle" class="text-lg font-bold flex-1 truncate"></h2>
       <span id="syncLabel" class="text-xs text-slate-500 flex items-center whitespace-nowrap"></span>
       <span id="todayLabel" class="text-xs text-slate-400 hidden sm:block"></span>
+      <button id="themeToggle" class="btn btn-ghost btn-sm" title="สลับธีมสว่าง / มืด"></button>
     </header>
     <main id="view" class="flex-1 p-4 md:p-6 overflow-x-clip"></main>
   </div>
@@ -171,6 +249,19 @@ tailwind.config = {
 
 <div id="toast-wrap"></div>
 <div id="modalRoot"></div>
+<script>
+/* ปุ่มสลับธีมสว่าง / มืด — จำค่าไว้ในเครื่องนี้ */
+(function(){
+  const btn = document.getElementById('themeToggle'), root = document.documentElement;
+  const paint = () => { btn.innerHTML = '<i data-lucide="' + (root.classList.contains('dark') ? 'sun' : 'moon') + '" class="w-4 h-4"></i>'; if(window.lucide) lucide.createIcons(); };
+  btn.addEventListener('click', () => {
+    const dark = root.classList.toggle('dark');
+    try{ localStorage.setItem('taskcheck_theme', dark ? 'dark' : 'light'); }catch(e){}
+    paint();
+  });
+  paint();
+})();
+</script>
 
 <script>
 (function(){
@@ -228,15 +319,18 @@ async function api(action, body){
 function pendingKey(){ return PENDING_KEY + ':' + (currentUser ? currentUser.id : '-'); }
 function savePendingLocally(ops){ try{ if(ops) localStorage.setItem(pendingKey(), JSON.stringify(ops)); }catch(e){} }
 function clearPendingLocally(){ try{ localStorage.removeItem(pendingKey()); }catch(e){} }
-function applyStoredPending(){
-  let ops = null; try{ ops = JSON.parse(localStorage.getItem(pendingKey()) || 'null'); }catch(e){}
-  if(!ops || !DB) return;
+function applyOps(ops){
   Object.entries(ops).forEach(([c, op]) => {
-    if(!Array.isArray(DB[c])) return;
+    if(!Array.isArray(DB[c]) || !op) return;
     const del = new Set(op.delete || []);
     DB[c] = DB[c].filter(it => !del.has(it.id));
     (op.upsert || []).forEach(it => { const i = DB[c].findIndex(x => x.id === it.id); if(i >= 0) DB[c][i] = it; else DB[c].push(it); });
   });
+}
+function applyStoredPending(){
+  let ops = null; try{ ops = JSON.parse(localStorage.getItem(pendingKey()) || 'null'); }catch(e){}
+  if(!ops || !DB) return;
+  applyOps(ops);
   schedulePush(); // server gets the unsent work; the key is cleared after a successful save
 }
 function recoverFromBrowserCheck(){
@@ -248,7 +342,7 @@ function recoverFromBrowserCheck(){
   location.reload();
 }
 const SYNC_COLLS = ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns','albums'];
-let syncSnapshot = null, pushTimer = null, pushing = null, pendingOps = null, retryTimer = null;
+let syncSnapshot = null, pushTimer = null, pushing = null, pendingOps = null, pendingMeta = null, retryTimer = null;
 function takeSnapshot(db){
   const snap = {};
   SYNC_COLLS.forEach(c => { const m = new Map(); (db[c]||[]).forEach(it => { if(it && it.id) m.set(it.id, JSON.stringify(it)); }); snap[c] = m; });
@@ -264,9 +358,16 @@ function computeOps(){
     prev.forEach((_, id) => { if(!cur.has(id)) del.push(id); });
     if(upsert.length || del.length){ ops[c] = {upsert, delete: del}; any = true; }
   });
-  const metaChanged = JSON.stringify(DB.meta||{}) !== syncSnapshot.meta;
-  return (any || metaChanged) ? ops : null;
+  return any ? ops : null;
 }
+/* meta: ส่งเฉพาะ key ที่เครื่องนี้แก้ — ถ้าส่งทั้งก้อน แท็บที่เปิดค้างไว้จะเอาค่าเก่าไปทับของที่คนอื่นเพิ่งตั้ง */
+function metaChanges(){
+  let prev = {}; try{ prev = JSON.parse(syncSnapshot.meta || '{}') || {}; }catch(e){}
+  const cur = DB.meta || {}, out = {}; let any = false;
+  Object.keys(cur).forEach(k => { if(JSON.stringify(cur[k]) !== JSON.stringify(prev[k])){ out[k] = cur[k]; any = true; } });
+  return any ? out : null;
+}
+const mergeMeta = (a, b) => (a || b) ? {...(a || {}), ...(b || {})} : null;
 function mergeOps(a, b){
   if(!a) return b; if(!b) return a;
   const out = {};
@@ -293,20 +394,22 @@ async function pushNow(){
   if(pushing){ await pushing; return pushNow(); }
   clearTimeout(pushTimer); pushTimer = null;
   const ops = mergeOps(pendingOps, computeOps());
-  pendingOps = null;
+  const meta = mergeMeta(pendingMeta, metaChanges());
+  pendingOps = null; pendingMeta = null;
   (DB.users||[]).forEach(u => { delete u.new_password; });
   syncSnapshot = takeSnapshot(DB);
-  if(!ops) { clearPendingLocally(); setSync('ok'); return; }
+  if(!ops && !meta) { clearPendingLocally(); setSync('ok'); return; }
   setSync('saving');
   pushing = (async () => {
     try{
-      const {status, ok, j} = await api('sync', {ops, meta: DB.meta||{}});
-      if(status === 401 || j.error === 'unauthorized'){ savePendingLocally(ops); toast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (งานที่ยังไม่ได้ส่งจะถูกส่งหลังเข้าสู่ระบบ)','error'); currentUser = null; showLogin(); return; }
+      const {status, ok, j} = await api('sync', meta ? {ops: ops || {}, meta} : {ops});
+      if(status === 401 || j.error === 'unauthorized'){ savePendingLocally(ops); pendingMeta = mergeMeta(meta, pendingMeta); toast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (งานที่ยังไม่ได้ส่งจะถูกส่งหลังเข้าสู่ระบบ)','error'); currentUser = null; showLogin(); return; }
       if(!ok || !j.ok) throw new Error(j.error || ('HTTP '+status));
       if(!pendingOps) clearPendingLocally();
       setSync('ok');
     }catch(e){
       pendingOps = mergeOps(ops, pendingOps);
+      pendingMeta = mergeMeta(meta, pendingMeta);
       savePendingLocally(pendingOps);
       if(e.browserCheck){ pushing = null; recoverFromBrowserCheck(); return; }
       setSync('offline');
@@ -315,18 +418,26 @@ async function pushNow(){
   })();
   return pushing;
 }
-async function flushPush(){ if(pushTimer || pushing || pendingOps) await pushNow(); if(pushing) await pushing; }
+async function flushPush(){ if(pushTimer || pushing || pendingOps || pendingMeta) await pushNow(); if(pushing) await pushing; }
 async function pullDB(){
   try{
     await flushPush();
-    if(pendingOps) return false; // ยังส่งไม่ได้ อย่าทับข้อมูลในเครื่อง
+    if(pendingOps || pendingMeta) return false; // ยังส่งไม่ได้ อย่าทับข้อมูลในเครื่อง
     const {status, j} = await api('bootstrap');
     if(status === 401 || j.error === 'unauthorized'){ if(currentUser){ toast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่','error'); } currentUser = null; showLogin(); return false; }
-    if(j && j.db){ DB = j.db; migrateDB(DB); syncSnapshot = takeSnapshot(DB); if(j.user && currentUser) currentUser = DB.users.find(u => u.id === j.user.id) || currentUser; applyStoredPending(); setSync('ok'); return true; }
+    if(j && j.db){
+      // ระหว่างรอเซิร์ฟเวอร์ตอบ ผู้ใช้อาจกดบันทึกงานไปแล้ว → เก็บไว้ใส่กลับหลังรับข้อมูลชุดใหม่ (ไม่งั้นงานหายเงียบๆ)
+      const localOps = (syncSnapshot && DB) ? computeOps() : null, localMeta = (syncSnapshot && DB) ? metaChanges() : null;
+      DB = j.db; migrateDB(DB); syncSnapshot = takeSnapshot(DB); _knownSkuCache.n = -1;
+      if(localOps) applyOps(localOps);
+      if(localMeta) DB.meta = {...DB.meta, ...localMeta};
+      if(localOps || localMeta) schedulePush();
+      if(j.user && currentUser) currentUser = DB.users.find(u => u.id === j.user.id) || currentUser; applyStoredPending(); setSync('ok'); return true;
+    }
   }catch(e){ if(e.browserCheck){ recoverFromBrowserCheck(); return false; } setSync('offline'); }
   return false;
 }
-window.addEventListener('beforeunload', e => { if(apiMode && (pushTimer || pushing || pendingOps)){ savePendingLocally(mergeOps(pendingOps, syncSnapshot ? computeOps() : null)); pushNow(); e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if(apiMode && (pushTimer || pushing || pendingOps || pendingMeta)){ savePendingLocally(mergeOps(pendingOps, syncSnapshot ? computeOps() : null)); pushNow(); e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -487,6 +598,7 @@ function seedDB(){
 
 /* ---------- DB layer ---------- */
 let DB = null;
+let _knownSkuCache = {n:-1, set:null};
 function migrateDB(db){
   db.meta = (db.meta && typeof db.meta==='object' && !Array.isArray(db.meta)) ? db.meta : {};
   ['users','shops','products','worklogs','tiktoks','history','tiktok_jobs','sales','import_audits','tasks','campaigns','albums'].forEach(c => { if(!Array.isArray(db[c])) db[c] = []; });
@@ -498,7 +610,7 @@ function migrateDB(db){
   return db;
 }
 function loadDB(){
-  DB = null;
+  DB = null; _knownSkuCache.n = -1;
   try{ const raw = localStorage.getItem(LS_KEY); if(raw){ DB = JSON.parse(raw); } }catch(e){}
   if(!DB || typeof DB !== 'object'){ DB = seedDB(); }
   migrateDB(DB);
@@ -572,6 +684,7 @@ async function refreshRuntimeState(){
 }
 let saveErrorShown = null;
 function saveDB(){
+  _knownSkuCache.n = -1; // SKU อาจถูกแก้/เพิ่ม → สร้างชุดรหัสใหม่ครั้งหน้า
   if(currentUser && document.getElementById('navMenu')) setTimeout(renderNav, 0); // ตัวเลขแจ้งเตือนที่เมนูอัปเดตทันที
   if(apiMode){ schedulePush(); return; }
   try{ localStorage.setItem(LS_KEY, JSON.stringify(DB)); saveErrorShown = null; }
@@ -599,7 +712,7 @@ async function login(username, password){
   if(apiMode){
     try{
       const {j} = await api('login', {username, password});
-      if(j&&j.ok){ setToken(j.token); currentUser=j.user; syncSnapshot=null; pendingOps=null; await pullDB(); normalizeUserShopAccess(currentUser); return true; }
+      if(j&&j.ok){ setToken(j.token); currentUser=j.user; syncSnapshot=null; pendingOps=null; pendingMeta=null; await pullDB(); normalizeUserShopAccess(currentUser); return true; }
       return false;
     }catch(e){ if(e.browserCheck){ recoverFromBrowserCheck(); } else toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่','error'); return false; }
   }
@@ -663,9 +776,9 @@ function bigsellerPill(w){
 }
 
 /* mark work: status = 'done' | 'progress' | 'pending' */
-function markWork(pid, platform, shopId, status){
+function markWork(pid, platform, shopId, status, quiet){ // quiet = ทำเป็นชุด: ผู้เรียกเขียนประวัติ + saveDB เองครั้งเดียว
   if(!isAdmin() && !canAccessShop(shopId)){
-    toast('ร้านนี้ไม่ได้รับมอบหมายให้คุณ','error');
+    if(!quiet) toast('ร้านนี้ไม่ได้รับมอบหมายให้คุณ','error');
     return;
   }
   let w = getWorklog(pid, platform, shopId);
@@ -681,6 +794,7 @@ function markWork(pid, platform, shopId, status){
     w.work_date = todayISO();
     w.updated_at = nowISO();
   }
+  if(quiet) return;
   logHistory('mark_'+status, productById(pid)?.sku+' @ '+platform+'/'+shopById(shopId)?.code+' ('+was+'→'+status+')');
   saveDB();
 }
@@ -828,7 +942,7 @@ async function offerLocalImport(){
   try{
     const {j} = await api('import_local', {db: local});
     if(!j.ok){ toast(j.error || 'ย้ายข้อมูลไม่สำเร็จ', 'error'); return; }
-    syncSnapshot = null; pendingOps = null;
+    syncSnapshot = null; pendingOps = null; pendingMeta = null;
     if(await pullDB()){ currentUser = DB.users.find(u => u.id === currentUser.id) || currentUser; renderNav(); renderCurrentView(); }
     toast('ย้ายข้อมูลขึ้นเซิร์ฟเวอร์แล้ว — ทุกคนเห็นข้อมูลชุดเดียวกัน');
   }catch(e){ toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่ภายหลัง', 'error'); }
@@ -845,7 +959,7 @@ function showApp(){
   const d=new Date(); $('#todayLabel').textContent = ['วันอาทิตย์','วันจันทร์','วันอังคาร','วันพุธ','วันพฤหัสบดี','วันศุกร์','วันเสาร์'][d.getDay()]+' '+fmtDate(todayISO());
   setSync('ok');
   let back = null; try{ back = sessionStorage.getItem('sku_return_view'); sessionStorage.removeItem('sku_return_view'); }catch(e){}
-  navTo(back && NAV.some(n => n.id === back && (!n.admin || isAdmin())) ? back : 'dashboard');
+  navTo(back && (['check', 'campaigns', 'tiktokjobs'].includes(back) || NAV.some(n => n.id === back && (!n.admin || isAdmin()))) ? back : 'dashboard'); // check/campaigns/tiktokjobs เป็นแท็บของ "งาน" ไม่อยู่ใน NAV
   warnDefaultPassword();
   offerLocalImport().finally(startLineLive);
 }
@@ -858,7 +972,6 @@ function showApp(){
 /* ตัดสี/ไซส์ออกจาก SKU เช่น 020666-เทา-3XL → 020666, WA-214PLACL32-PH-3L → WA-214PLACL32 */
 const SKU_SIZE_RE = /^(Y?(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|XXXXL|[2-9]XL|[2-9]L)|SS|F|FS|FREE|FREESIZE|ONESIZE|OS)$/; // Y = ไซส์เด็ก เช่น YS, YXL
 const SKU_COLOR_RE = /^(DARK|LIGHT|NEON|D|L)?(BLACK|WHITE|RED|BLUE|GREEN|YELLOW|ORANGE|PINK|PURPLE|BROWN|GREY|GRAY|NAVY|BEIGE|CREAM|KHAKI|GOLD|SILVER|TEAL|INDIGO|MAROON|CORAL|WINE|MINT|LIME|AQUA|OFFWHITE|IVORY|SKY|SKYBLUE|ROYAL|ROYALBLUE|CHARCOAL|OLIVE)$/;
-let _knownSkuCache = {n:-1, set:null};
 function knownSkuSet(){
   const list = (typeof DB!=='undefined' && DB && Array.isArray(DB.products)) ? DB.products : [];
   if(_knownSkuCache.n !== list.length){
@@ -1531,7 +1644,7 @@ function checkImportBox(shop){
   if(!shop) return '';
   if(importMode !== 'sku'){ importMode = 'sku'; importPreview = null; } // หน้าเช็ก SKU รับแค่ไฟล์รายการ SKU
   const listing = importPreview && importPreview.mode === 'listing';
-  return `<div class="px-4 py-3" style="background:#f8fafc;">
+  return `<div class="px-4 py-3 bg-slate-50">
       <div class="${listing ? 'hidden' : ''}">
       <div class="flex items-center gap-2 mb-3">
         <i data-lucide="file-spreadsheet" class="w-4 h-4 text-cyan-600"></i>
@@ -1555,6 +1668,17 @@ function checkImportBox(shop){
     </div>`;
 }
 document.addEventListener('click', e => {
+  const cell = e.target.closest('[data-shop-toggle]'); // ป้ายร้านในคอลัมน์ "ทุกร้าน"
+  if(cell){
+    const sh = shopById(cell.dataset.shop); if(!sh) return;
+    if(!isAdmin() && !canAccessShop(sh.id)){ toast('ร้านนี้ไม่ได้รับมอบหมายให้คุณ','error'); return; }
+    // กดวน: ยังไม่ได้ทำ → กำลังทำ → ทำแล้ว → ยังไม่ได้ทำ
+    const cur = getWorklog(cell.dataset.shopToggle, sh.platform, sh.id)?.status || 'pending';
+    const next = cur === 'pending' ? 'progress' : cur === 'progress' ? 'done' : 'pending';
+    markWork(cell.dataset.shopToggle, sh.platform, sh.id, next);
+    toast(sh.code + ' · ' + {progress:'บันทึก "กำลังทำ"', done:'บันทึก "ทำแล้ว" เรียบร้อย', pending:'ยกเลิกสถานะแล้ว'}[next]);
+    renderCheck(); return;
+  }
   if(e.target.closest('[data-open-import]')) chkImportOpen = true; // ปุ่ม "นำเข้า Excel" จากหน้าอื่น → เปิดกล่องนำเข้าไว้
   if(e.target.closest('[data-toggle-import]')){
     if(importPreview){ toast('กด “นำเข้า” หรือ “ยกเลิก” ไฟล์ที่ค้างอยู่ก่อน', 'info'); return; }
@@ -1568,7 +1692,10 @@ document.addEventListener('click', e => {
     checkState.platform = pl.dataset.chkPlatform;
     const visible = getAssignedShopIds(currentUser);
     checkState.shopId = DB.shops.find(x => x.platform === checkState.platform && x.active !== false && (isAdmin() || visible.includes(x.id)))?.id || null;
-  } else checkState.shopId = sh.dataset.chkShop;
+  } else {
+    checkState.shopId = sh.dataset.chkShop;
+    const s = shopById(checkState.shopId); if(s) checkState.platform = s.platform; // กดร้านจากมุมมอง "ทุกร้าน" → เปิดแพลตฟอร์มของร้านนั้น
+  }
   checkState.selected.clear();
   renderCheck();
 });
@@ -1635,7 +1762,9 @@ document.addEventListener('click', e => {
 function renderCheck(){
   const visibleShopIds = getAssignedShopIds(currentUser);
   const shopsOf = plat => DB.shops.filter(s=>s.active!==false && s.platform===plat && (isAdmin() || visibleShopIds.includes(s.id)));
-  if(!shopsOf(checkState.platform).length){
+  const isAll = checkState.platform === 'all'; // มุมมอง "ทุกร้าน ทุกแพลตฟอร์ม" — ไม่มีร้านที่เลือกอยู่ ทำงานผ่านป้ายร้านในแต่ละแถว
+  const allShops = PLATFORMS.flatMap(shopsOf);
+  if(!(isAll ? allShops : shopsOf(checkState.platform)).length){
     const firstPlat = PLATFORMS.find(pl => shopsOf(pl).length);
     if(!firstPlat){
       $('#view').innerHTML = `<div class="fade-in space-y-4">${workTabsHtml('check')}<div class="card p-10 text-center text-slate-500">คุณยังไม่ได้รับมอบหมายร้านใดเลย กรุณาติดต่อ Admin เพื่อกำหนดร้านที่ทำได้</div></div>`;
@@ -1643,8 +1772,9 @@ function renderCheck(){
     }
     checkState.platform = firstPlat; checkState.shopId = null; checkState.selected.clear();
   }
-  const shops = shopsOf(checkState.platform);
-  if(!checkState.shopId || !shops.some(s=>s.id===checkState.shopId)) checkState.shopId = shops[0].id;
+  const shops = isAll ? allShops : shopsOf(checkState.platform);
+  if(isAll){ checkState.shopId = null; checkState.selected.clear(); }
+  else if(!checkState.shopId || !shops.some(s=>s.id===checkState.shopId)) checkState.shopId = shops[0].id;
   const q = checkState.q.trim().toLowerCase();
   const qBase = normalizeBaseSku(q || '').toLowerCase();
   let products = DB.products.filter(p=>p.active);
@@ -1653,17 +1783,39 @@ function renderCheck(){
     const baseSku = normalizeBaseSku(p.sku || '').toLowerCase();
     return sku.includes(q) || baseSku.includes(qBase) || (p.name||'').toLowerCase().includes(q) || (p.brand||'').toLowerCase().includes(q);
   });
-  if(checkState.status!=='all') products = products.filter(p => { const w = getWorklog(p.id, checkState.platform, checkState.shopId); return (w?w.status:'pending') === checkState.status; });
+  // worklog ของร้านที่ดูอยู่ + จำนวน "ทำแล้ว" ต่อร้าน (นับเฉพาะ SKU ที่ยังใช้งาน ให้ตรงกับตัวหาร)
+  const wlOf = new Map(), wlAll = new Map(), doneByShop = new Map(), activeIds = new Set(DB.products.filter(p=>p.active).map(p=>p.id));
+  DB.worklogs.forEach(w => {
+    if(!isAll && w.platform !== checkState.platform) return;
+    const k =w.product_id + '|' + w.shop_id; // สถานะของทุกร้านในแพลตฟอร์มนี้ — ใช้กับคอลัมน์ "ทุกร้าน"
+    if(!wlAll.has(k)) wlAll.set(k, w);
+    if(w.shop_id === checkState.shopId && !wlOf.has(w.product_id)) wlOf.set(w.product_id, w);
+    if(w.status === 'done' && activeIds.has(w.product_id)) doneByShop.set(w.shop_id, (doneByShop.get(w.shop_id) || 0) + 1);
+  });
+  // สถานะของ SKU: ร้านที่เลือกอยู่ · ในมุมมองทุกร้าน = ทำแล้วเมื่อครบทุกร้าน / ยังไม่ได้ทำเมื่อยังไม่มีร้านไหนเริ่ม / นอกนั้นกำลังทำ
+  const doneCount = p => shops.reduce((n, sh) => n + (wlAll.get(p.id + '|' + sh.id)?.status === 'done' ? 1 : 0), 0);
+  const stOf = p => {
+    if(!isAll) return wlOf.get(p.id)?.status || 'pending';
+    const sts = shops.map(sh => wlAll.get(p.id + '|' + sh.id)?.status || 'pending');
+    return sts.every(x => x === 'done') ? 'done' : sts.every(x => x === 'pending') ? 'pending' : 'progress';
+  };
+  if(checkState.status!=='all') products = products.filter(p => stOf(p) === checkState.status);
   const totalFound = products.length;
   const keepImportHtml = importPreview ? ($('#importResult')?.innerHTML || '') : '';
   const curShop = shops.find(sh=>sh.id===checkState.shopId);
+  const ST_LABEL = {done:'ทำแล้ว', progress:'กำลังทำ', pending:'ยังไม่ได้ทำ'};
+  const shopCells = (p, list = shops) => list.map(sh => { // ป้ายสถานะของ SKU นี้ในทุกร้าน — กดวน ยังไม่ได้ทำ → กำลังทำ → ทำแล้ว ของร้านนั้นโดยไม่ต้องเปลี่ยนร้าน
+    const w = wlAll.get(p.id + '|' + sh.id), st = w ? w.status : 'pending';
+    const tip = sh.code + ' · ' + ST_LABEL[st] + (w && st !== 'pending' ? ' · ' + (userById(w.user_id)?.name || '-') + ' · ' + fmtDate(w.work_date) : '') + ' — กดเพื่อ' + (st === 'done' ? 'ยกเลิก' : st === 'progress' ? 'ทำแล้ว' : 'กำลังทำ');
+    return `<button type="button" class="shop-cell shop-${st}" style="margin:1px;${sh.id===checkState.shopId?'border-color:var(--accent);':''}" data-shop-toggle="${p.id}" data-shop="${sh.id}" title="${esc(tip)}">${esc(sh.code)}</button>`;
+  }).join('');
   const statusCounts = (() => {
-    const st = new Map(DB.worklogs.filter(w=>w.shop_id===checkState.shopId && w.platform===checkState.platform).map(w=>[w.product_id, w.status]));
     const c = {all:0, pending:0, progress:0, done:0};
-    DB.products.forEach(p=>{ if(!p.active) return; c.all++; const x = st.get(p.id) || 'pending'; c[x] = (c[x]||0) + 1; });
+    DB.products.forEach(p=>{ if(!p.active) return; c.all++; const x = stOf(p); c[x] = (c[x]||0) + 1; });
     return c;
   })();
   importSelectedShopId = checkState.shopId;
+  const allPlats = PLATFORMS.filter(pl => shops.some(sh => sh.platform === pl));
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
@@ -1672,7 +1824,7 @@ function renderCheck(){
     <div class="card overflow-hidden">
       <div class="px-3 py-2.5 space-y-2">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="seg">${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="${pl===checkState.platform?'on':''}" data-chk-platform="${pl}">${pl}</button>`).join('')}</div>
+          <div class="seg">${PLATFORMS.filter(pl=>shopsOf(pl).length).map(pl=>`<button class="${pl===checkState.platform?'on':''}" data-chk-platform="${pl}">${pl}</button>`).join('')}<button class="${isAll?'on':''}" data-chk-platform="all" title="ดูสถานะของทุกร้าน ทุกแพลตฟอร์มในตารางเดียว">ทุกร้าน</button></div>
           <div class="flex flex-wrap gap-2 sm:ml-auto">
           ${curShop && curShop.platform === 'Shopee' ? `<button class="btn btn-sm btn-primary" data-bs-pull title="ดึงไฟล์สินค้าล่าสุดที่ชิวเกินอัปขึ้น Supabase มาเทียบกับรายการนี้ (ทุกร้าน Shopee)"><i data-lucide="cloud-download" class="w-4 h-4"></i>ดึงจาก BigSeller</button>` : ''}
           ${curShop ? `<button class="btn btn-sm ${chkImportOpen||importPreview?'btn-primary':'btn-soft'}" data-toggle-import><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>นำเข้า Excel · ${esc(curShop.code)}</button>` : ''}
@@ -1680,10 +1832,11 @@ function renderCheck(){
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-[11px] font-semibold text-slate-400" title="ตัวเลข = ทำแล้ว/ทั้งหมด">${isAdmin()?'ร้าน':'ร้านของฉัน'}</span>
-            ${shops.map(sh=>{
+            ${shops.map((sh, i)=>{
               const on = sh.id===checkState.shopId;
-              const done = DB.worklogs.filter(w=>w.shop_id===sh.id && w.platform===checkState.platform && w.status==='done').length;
-              return `<button class="shop-pick ${on?'on':''}" data-chk-shop="${sh.id}" title="${esc(sh.name)} · ทำแล้ว ${done} จาก ${statusCounts.all} SKU"><span class="tick">${on?'✓':''}</span>${esc(sh.code)}<span class="cnt">${done}/${statusCounts.all}</span></button>`;
+              const done = doneByShop.get(sh.id) || 0;
+              const head = isAll && (i === 0 || shops[i-1].platform !== sh.platform) ? `<span class="text-[11px] font-semibold plat-name" style="color:${platColor(sh.platform)}">${esc(sh.platform)}</span>` : '';
+              return head + `<button class="shop-pick ${on?'on':''}" data-chk-shop="${sh.id}" title="${esc(sh.name)} · ทำแล้ว ${done} จาก ${statusCounts.all} SKU${isAll?' — กดเพื่อเปิดร้านนี้':''}"><span class="tick">${on?'✓':''}</span>${esc(sh.code)}<span class="cnt">${done}/${statusCounts.all}</span></button>`;
             }).join('')}
         </div>
       </div>
@@ -1693,30 +1846,41 @@ function renderCheck(){
           <input id="chkSearch" class="input pl-9" placeholder="ค้นหา SKU / ชื่อ / แบรนด์ เช่น 020666" value="${esc(checkState.q)}" autofocus>
         </div>
         <div class="seg">${[['all','ทั้งหมด'],['pending','ยังไม่ได้ทำ'],['progress','กำลังทำ'],['done','ทำแล้ว']].map(([v,l])=>
-          `<button class="${checkState.status===v?'on':''}" data-chk-status="${v}">${l}<span class="n">${statusCounts[v]}</span></button>`).join('')}</div>
-        <button id="bulkDone" class="btn btn-primary btn-sm whitespace-nowrap" ${checkState.selected.size===0?'disabled style="opacity:.4;cursor:not-allowed;"':''}>
+          `<button class="${checkState.status===v?'on':''}" data-chk-status="${v}" ${isAll?`title="${{all:'ทุก SKU', pending:'ยังไม่มีร้านไหนเริ่มทำ', progress:'ทำไปบางร้าน ยังไม่ครบ', done:'ทำครบทุกร้านแล้ว'}[v]}"`:''}>${isAll?({pending:'ยังไม่เริ่ม', progress:'ยังไม่ครบ', done:'ครบทุกร้าน'}[v]||l):l}<span class="n">${statusCounts[v]}</span></button>`).join('')}</div>
+        ${isAll ? '' : `<button id="bulkDone" class="btn btn-primary btn-sm whitespace-nowrap" ${checkState.selected.size===0?'disabled style="opacity:.4;cursor:not-allowed;"':''}>
           <i data-lucide="check-check" class="w-4 h-4"></i>ทำแล้วทั้งหมด (<span id="selCount">${checkState.selected.size}</span>)
-        </button>
+        </button>`}
       </div>
     </div></div>
 
-    ${(chkImportOpen||importPreview) ? `<div class="card overflow-hidden">${checkImportBox(curShop)}</div>` : ''}
+    ${curShop && (chkImportOpen||importPreview) ? `<div class="card overflow-hidden">${checkImportBox(curShop)}</div>` : ''}
 
     <div class="card overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--border);">
-        <p class="text-sm text-slate-500">พบ <b class="badge-num">${totalFound}</b> รายการ · กำลังดู <b>${esc(checkState.platform)} / ${esc(shopById(checkState.shopId)?.code||'-')}</b></p>
-        <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer"><input type="checkbox" id="selAll" class="w-4 h-4"> เลือกทั้งหมด</label>
+        <p class="text-sm text-slate-500">พบ <b class="badge-num">${totalFound}</b> รายการ · กำลังดู <b>${isAll ? 'ทุกร้าน ทุกแพลตฟอร์ม' : esc(checkState.platform) + ' / ' + esc(shopById(checkState.shopId)?.code||'-')}</b></p>
+        ${isAll ? '<span class="text-xs text-slate-400">กดป้ายร้าน: ยังไม่ได้ทำ → กำลังทำ → ทำแล้ว</span>' : '<label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer"><input type="checkbox" id="selAll" class="w-4 h-4"> เลือกทั้งหมด</label>'}
       </div>
       <div class="overflow-x-auto">
       <table class="data">
         <thead><tr>
-          <th style="width:44px;" class="text-right">#</th><th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th>Excel</th>
-          <th style="width:140px;">ดำเนินการ</th>
+          ${isAll
+            ? `<th style="width:44px;" class="text-right">#</th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th title="จำนวนร้านที่ทำแล้ว / ร้านทั้งหมด">สรุป</th>${allPlats.map(pl => `<th title="เขียว = ทำแล้ว · เหลือง = กำลังทำ · เทา = ยังไม่ได้ทำ · กดป้ายเพื่อเปลี่ยนสถานะของร้านนั้น" class="plat-name" style="color:${platColor(pl)}">${esc(pl)}</th>`).join('')}`
+            : `<th style="width:44px;" class="text-right">#</th><th style="width:36px;"></th><th>SKU</th><th>แบรนด์</th><th>สี</th><th>ไซส์</th><th>สถานะงาน</th><th title="เขียว = ทำแล้ว · เหลือง = กำลังทำ · เทา = ยังไม่ได้ทำ · กดป้ายเพื่อเปลี่ยนสถานะของร้านนั้น">ทุกร้าน</th><th>Excel</th>
+          <th style="width:140px;">ดำเนินการ</th>`}
         </tr></thead>
         <tbody id="chkTbody">
-          ${products.length===0?'<tr><td colspan="9" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>':
+          ${products.length===0?`<tr><td colspan="${isAll ? 6 + allPlats.length : 10}" class="text-center py-10 text-slate-400">ไม่พบ SKU — <button class="text-brand-600 font-semibold underline" data-nav="check" data-open-import="1">Import Excel</button></td></tr>`:
           products.map((p, rowNo)=>{
-            const w = getWorklog(p.id, checkState.platform, checkState.shopId);
+            if(isAll) return `<tr>
+              <td class="text-right text-xs text-slate-400 badge-num">${rowNo + 1}</td>
+              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
+              <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
+              <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
+              <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
+              <td class="whitespace-nowrap">${statusPill(stOf(p))}<div class="text-[10px] text-slate-400 mt-0.5 badge-num">${doneCount(p)}/${shops.length} ร้าน</div></td>
+              ${allPlats.map(pl => `<td class="whitespace-nowrap">${shopCells(p, shops.filter(sh => sh.platform === pl))}</td>`).join('')}
+            </tr>`;
+            const w = wlOf.get(p.id);
             const st = w?w.status:'pending';
             if(checkState.status!=='all' && checkState.status!==st) return '';
             const checked = checkState.selected.has(p.id)?'checked':'';
@@ -1728,11 +1892,12 @@ function renderCheck(){
               <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
               <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
               <td>${statusPill(st)}${w?`<div class="text-[10px] text-slate-400 mt-0.5">${esc(userById(w.user_id)?.name||'-')} · ${fmtDate(w.work_date)}</div>`:''}</td>
+              <td class="whitespace-nowrap">${shopCells(p)}</td>
               <td>${excelCheckCell(p, checkState.shopId)}</td>
               <td>
                 ${st==='done'
                   ? `<span class="pill pill-done"><i data-lucide="check" class="w-3.5 h-3.5"></i>เสร็จ</span> <button class="btn btn-ghost btn-sm ml-1 text-xs" data-undo="${p.id}">ยกเลิก</button>`
-                  : `${st!=='progress'?`<button class="btn btn-ghost btn-sm" data-mark-progress="${p.id}" title="กำลังทำ"><i data-lucide="loader" class="w-3.5 h-3.5"></i></button>`:''}`
+                  : `<button class="btn btn-soft btn-sm" data-mark-done="${p.id}" title="ทำแล้ว"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>${st!=='progress'?` <button class="btn btn-ghost btn-sm" data-mark-progress="${p.id}" title="กำลังทำ"><i data-lucide="loader" class="w-3.5 h-3.5"></i></button>`:''}`
                 }
               </td>
             </tr>`;
@@ -1744,7 +1909,7 @@ function renderCheck(){
   if(keepImportHtml && $('#importResult')) $('#importResult').innerHTML = keepImportHtml;
   else if(importPreview && importPreview.mode === 'listing' && listingArgs && $('#importResult')) showListingPreview(...listingArgs); // กลับมาหน้านี้ → แสดงตารางเทียบเดิมอีกครั้ง
   if(window.lucide) lucide.createIcons();
-  maybeAutoPullBigSeller(); // มีไฟล์ใหม่จากชิวเกิน → เปิดตารางเทียบรอให้กดนำเข้า
+  if(!isAll) maybeAutoPullBigSeller(); // มีไฟล์ใหม่จากชิวเกิน → เปิดตารางเทียบรอให้กดนำเข้า
 }
 
 /* ---------- SKU List ---------- */
@@ -2324,7 +2489,7 @@ setInterval(() => { if(currentView === 'check') maybeAutoPullBigSeller(); }, 120
 async function pullBigSeller(auto = false){
   if(!apiMode || !getToken()){ if(!auto) toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
   if(!window.XLSX){ if(!auto) toast('ไลบรารี Excel ยังไม่พร้อม ลองใหม่อีกครั้ง', 'error'); return; }
-  if(bsPulling) return;
+  if(bsPulling){ if(!auto) toast('กำลังดึงไฟล์อยู่ รอสักครู่...', 'info'); return; }
   bsPulling = true;
   if(!auto){ if(!$('#importResult')){ chkImportOpen = true; renderCheck(); } showImportBusy('กำลังดึงไฟล์จาก BigSeller...'); }
   try{
@@ -2337,6 +2502,8 @@ async function pullBigSeller(auto = false){
     if(auto && newest <= synced) return; // ไม่มีไฟล์ใหม่
     const run = auto ? files.filter(f => new Date(f.at).getTime() > synced)
                      : files.filter(f => newest - new Date(f.at).getTime() < 3 * 3600000);
+    const seenFile = new Set(); // ชื่อใน Storage = <วัน>/<เวลา>-<ชื่อไฟล์เดิม>
+    run.splice(0, run.length, ...run.filter(f => { const k = String(f.name).replace(/^.*\/\d+-/, '') + '|' + f.size; if(seenFile.has(k)) return false; seenFile.add(k); return true; }));
     let rows = [];
     for(let i = 0; i < run.length; i++){
       if(!auto) showImportBusy(`กำลังอ่านไฟล์ ${i + 1}/${run.length}...`);
@@ -2391,7 +2558,7 @@ function confirmListingImport(){
   if(p.bs_at) DB.meta.bs_synced_at = Math.max(Number(DB.meta.bs_synced_at) || 0, p.bs_at);
   saveDB();
   toast('นำเข้า ' + done.length + ' ร้าน · เช็ค Excel ' + checked + ' SKU' + (marked ? ' · บันทึกทำแล้ว ' + marked : '') + (denied.length ? ' · ข้ามร้านที่ไม่มีสิทธิ์: ' + denied.join(', ') : '') + (nFail ? ' · มี ' + nFail + ' รายการต้องแก้ไข' : ''), denied.length || nFail ? 'info' : 'success');
-  importPreview = null; listingArgs = null; chkImportOpen = false; checkState.selected.clear(); navTo(nFail ? 'importfix' : 'check');
+  importPreview = null; listingArgs = null; chkImportOpen = false; checkState.selected.clear(); navTo(nFail && isAdmin() ? 'importfix' : 'check');
 }
 
 /* ---------- Import failures (fix page) ---------- */
@@ -2594,6 +2761,19 @@ function getTikTokReportLinks(date, userId){
   });
   return rows;
 }
+/* งาน "กำลังทำ" ของวันนั้น จัดกลุ่มตามร้าน → [{label:'Shopee PS', skus:[...]}] (สถานะที่กดยกเลิกแล้วไม่นับ) */
+function progressLogsOf(date, userId){
+  return DB.worklogs.filter(w=>w.status==='progress' && w.work_date===date && w.user_id===userId && productById(w.product_id));
+}
+function progressGroups(date, userId){
+  const g = new Map();
+  progressLogsOf(date, userId).forEach(w => {
+    const label = w.platform + ' ' + (shopById(w.shop_id)?.code || '?');
+    if(!g.has(label)) g.set(label, []);
+    g.get(label).push(productById(w.product_id).sku);
+  });
+  return [...g.entries()].map(([label, skus]) => ({label, skus: skus.sort()}));
+}
 function buildReportText(date, userId){
   const logs = DB.worklogs.filter(w=>w.status==='done' && w.work_date===date && (!userId || w.user_id===userId));
   const byUser = {};
@@ -2601,14 +2781,16 @@ function buildReportText(date, userId){
   const tiktokUsers = new Set();
   (DB.tiktok_jobs || []).forEach(job => { if(job.created_by && localDate(job.created_at) === date) tiktokUsers.add(job.created_by); });
   (DB.tiktoks || []).forEach(t => { if(t.created_by && localDate(t.created_at) === date) tiktokUsers.add(t.created_by); });
-  const users = userId ? [userId] : Array.from(new Set([...Object.keys(byUser), ...tiktokUsers]));
+  const progressUsers = DB.worklogs.filter(w=>w.status==='progress' && w.work_date===date).map(w=>w.user_id);
+  const users = userId ? [userId] : Array.from(new Set([...Object.keys(byUser), ...tiktokUsers, ...progressUsers]));
   let out = '📅 รายงานการทำงาน '+fmtDate(date)+'\n';
   let grandTotal=0, grandRemain=0;
   users.forEach(uid_=>{
     const u = userById(uid_); if(!u) return;
     const ulogs = byUser[uid_]||[];
     const ttLinks = getTikTokReportLinks(date, uid_);
-    if(ulogs.length===0 && ttLinks.length===0 && userId) return;
+    const doing = progressGroups(date, uid_);
+    if(ulogs.length===0 && ttLinks.length===0 && doing.length===0 && userId) return;
     out += '\n👤 ผู้ทำ: '+u.name+'\n';
     out += '📦 งาน SKU ทำแล้ว: '+ulogs.length+' รายการ\n';
     PLATFORMS.forEach(plat=>{
@@ -2623,7 +2805,11 @@ function buildReportText(date, userId){
       out += '🔗 ลิงก์ TikTok:\n';
       ttLinks.forEach((link, idx)=> out += '  '+(idx+1)+'. '+link.shop+': '+link.url+'\n');
     }
-    const remain = DB.worklogs.filter(w=>w.user_id===uid_ && w.status!=='done' && w.work_date===date).length;
+    const remain = doing.reduce((sum, g) => sum + g.skus.length, 0);
+    if(remain){
+      out += '⏳ กำลังทำ: '+remain+' รายการ\n';
+      doing.forEach(g => out += '  '+g.label+': '+g.skus.join(', ')+'\n');
+    }
     out += 'รวมงานวันนี้: '+(ulogs.length+remain)+' SKU\n';
     out += 'เหลืองาน: '+remain+' SKU\n';
     grandTotal+=ulogs.length; grandRemain+=remain;
@@ -2644,7 +2830,8 @@ function renderReport(){
   (DB.tiktoks || []).forEach(t => {
     if(localDate(t.created_at) === date && (isAdmin() || t.created_by === currentUser.id)) tiktokUsers.add(t.created_by);
   });
-  const visibleUsers = isAdmin() ? Array.from(new Set([...Object.keys(byUser), ...tiktokUsers])) : [currentUser.id];
+  const progressUsers = DB.worklogs.filter(w=>w.status==='progress' && w.work_date===date).map(w=>w.user_id); // คนที่มีแต่งาน "กำลังทำ" ก็ต้องขึ้นการ์ด
+  const visibleUsers = isAdmin() ? Array.from(new Set([...Object.keys(byUser), ...tiktokUsers, ...progressUsers])) : [currentUser.id];
   $('#view').innerHTML = `
   <div class="fade-in space-y-4">
     <div class="card p-4 flex flex-wrap items-center gap-3">
@@ -2662,7 +2849,12 @@ function renderReport(){
         const ttLinks=getTikTokReportLinks(date, uid_);
         const tts=ttLinks.length;
         const bs=ulogs.filter(w=>w.bigseller_done).length;
-        const remain=DB.worklogs.filter(w=>w.user_id===uid_ && w.status!=='done' && w.work_date===date).length;
+        const doing=progressGroups(date, uid_);
+        const remain=doing.reduce((sum, g)=>sum+g.skus.length, 0);
+        const doingBreak = doing.length ? `<div class="mt-3 pt-3 border-t" style="border-color:var(--border);">
+            <p class="text-xs font-semibold text-progress mb-1">กำลังทำ ${remain} รายการ</p>
+            ${doing.map(g=>`<div class="text-xs text-slate-500 mt-1"><b>${esc(g.label)}</b>: ${g.skus.map(sku=>`<span class="inline-block bg-amber-50 text-amber-700 rounded px-1.5 py-0.5 mr-1 my-0.5 font-mono">${esc(sku)}</span>`).join('')}</div>`).join('')}
+          </div>` : '';
         const platBreak = PLATFORMS.map(plat=>{
           const pl=ulogs.filter(w=>w.platform===plat); if(!pl.length) return '';
           const byShop={}; pl.forEach(w=>{const c=shopById(w.shop_id)?.code||'?';byShop[c]=(byShop[c]||0)+1;});
@@ -2680,9 +2872,10 @@ function renderReport(){
             <div class="p-2 rounded-lg bg-green-50"><p class="text-lg font-extrabold badge-num text-done">${ulogs.length}</p><p class="text-[10px] text-slate-500">ทำแล้ว</p></div>
             <div class="p-2 rounded-lg bg-purple-50"><p class="text-lg font-extrabold badge-num text-bigseller">${bs}</p><p class="text-[10px] text-slate-500">BigSeller</p></div>
             <div class="p-2 rounded-lg bg-blue-50"><p class="text-lg font-extrabold badge-num text-tiktok">${tts}</p><p class="text-[10px] text-slate-500">TikTok</p></div>
-            <div class="p-2 rounded-lg bg-amber-50"><p class="text-lg font-extrabold badge-num text-progress">${remain}</p><p class="text-[10px] text-slate-500">เหลือ</p></div>
+            <div class="p-2 rounded-lg bg-amber-50"><p class="text-lg font-extrabold badge-num text-progress">${remain}</p><p class="text-[10px] text-slate-500">กำลังทำ</p></div>
           </div>
-          ${platBreak||'<p class="text-xs text-slate-300">ไม่มีงาน</p>'}
+          ${platBreak||'<p class="text-xs text-slate-300">ยังไม่มีงานที่ทำแล้ว</p>'}
+          ${doingBreak}
           ${linkBreak}
         </div>`;
       }).join('')}
@@ -4370,8 +4563,15 @@ document.addEventListener('click', e=>{
   if(e.target.id==='importBrowseBtn' || e.target.closest('#importBrowseBtn')){ const input=$('#importFile'); if(input){ input.click(); } return; }
   if(e.target.id==='bulkDone' || e.target.closest('#bulkDone')){
     if(checkState.selected.size===0) return;
-    checkState.selected.forEach(pid=>markWork(pid, checkState.platform, checkState.shopId, 'done'));
-    toast('ทำเครื่องหมายทำแล้ว '+checkState.selected.size+' รายการ');
+    if(!isAdmin() && !canAccessShop(checkState.shopId)){ toast('ร้านนี้ไม่ได้รับมอบหมายให้คุณ','error'); return; }
+    const nSel = checkState.selected.size;
+    if(nSel === 1) markWork([...checkState.selected][0], checkState.platform, checkState.shopId, 'done');
+    else { // ประวัติ 1 บรรทัดต่อชุด — เดิม 1 บรรทัดต่อ SKU ทำให้ประวัติ (จำกัด 3,000) ถูกดันทิ้งเมื่อเลือกทีละมากๆ
+      checkState.selected.forEach(pid=>markWork(pid, checkState.platform, checkState.shopId, 'done', true));
+      logHistory('mark_done', 'ทำแล้ว '+nSel+' SKU @ '+checkState.platform+'/'+shopById(checkState.shopId)?.code);
+      saveDB();
+    }
+    toast('ทำเครื่องหมายทำแล้ว '+nSel+' รายการ');
     checkState.selected.clear(); renderCheck();
   }
   else if(e.target.id==='bulkCheck' || e.target.closest('#bulkCheck')){
@@ -4431,7 +4631,7 @@ document.addEventListener('click', e=>{
       }
       logHistory('sales_import', 'นำเข้าข้อมูลสินค้าขายดี '+(importPreview.salesRows||[]).length+' SKU');
       const nFailSales = recordImportFailures(importPreview);
-      saveDB(); toast('นำเข้าข้อมูลสินค้าขายดีสำเร็จ'+(nFailSales?(' · มี '+nFailSales+' รายการต้องแก้ไข'):'')); importPreview=null; navTo(nFailSales?'importfix':'dashboard'); return;
+      saveDB(); toast('นำเข้าข้อมูลสินค้าขายดีสำเร็จ'+(nFailSales?(' · มี '+nFailSales+' รายการต้องแก้ไข'):'')); importPreview=null; navTo(nFailSales && isAdmin() ? 'importfix' : 'dashboard'); return;
     }
     let updated=0;
     const impUpd=document.getElementById('impUpdate');
@@ -4483,7 +4683,7 @@ document.addEventListener('click', e=>{
       checkState.q = ''; checkState.status = 'all';
     }
     logHistory('import_excel', 'นำเข้า '+importPreview.fresh.length+' SKU ใหม่, อัปเดต '+updated+' SKU');
-    saveDB(); toast('นำเข้า '+importPreview.fresh.length+' SKU ใหม่'+(excelChecked?(' · เช็ค Excel '+excelChecked+' SKU'):'')+(marked?(' · บันทึกทำแล้ว '+marked+' SKU ที่ร้าน '+importedShop.code):'')+(updated?(' · อัปเดต '+updated+' รายการ'):'')+(nFail?(' · มี '+nFail+' รายการต้องแก้ไข'):''), nFail?'info':'success'); importPreview=null; navTo(marked ? 'check' : (nFail?'importfix':'check'));
+    saveDB(); toast('นำเข้า '+importPreview.fresh.length+' SKU ใหม่'+(excelChecked?(' · เช็ค Excel '+excelChecked+' SKU'):'')+(marked?(' · บันทึกทำแล้ว '+marked+' SKU ที่ร้าน '+importedShop.code):'')+(updated?(' · อัปเดต '+updated+' รายการ'):'')+(nFail?(' · มี '+nFail+' รายการต้องแก้ไข'):''), nFail?'info':'success'); importPreview=null; navTo(marked ? 'check' : (nFail && isAdmin() ? 'importfix' : 'check'));
   }
   else if(e.target.id==='importFailedExport' || e.target.closest('#importFailedExport')){
     if(!importPreview || !Array.isArray(importPreview.failed) || !importPreview.failed.length) return;
