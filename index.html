@@ -4114,6 +4114,7 @@ function renderBaseSku(){
       <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหารหัสสินค้า / แบรนด์ แล้วกด Enter" value="${esc(rsku.q)}">
       ${rsBrandSelect()}
       <span class="text-sm text-slate-500 badge-num">${list.length.toLocaleString()} รหัส · หน้า ${rsku.bpage + 1}/${pages}</span>
+      ${(() => { const n = isAdmin() ? DB.products.filter(variantLeftoverBase).length : 0; return n ? `<button class="btn btn-primary btn-sm whitespace-nowrap" data-rs-tidy title="เช่น 006174-กรม-10 → 006174 · สถานะงานย้ายตามไปให้"><i data-lucide="merge" class="w-4 h-4"></i>รวมรหัสที่ติดสี/ไซส์ (${n})</button>` : ''; })()}
       <div class="flex gap-1 lg:ml-auto whitespace-nowrap shrink-0">
         <button class="btn btn-ghost btn-sm" data-rs-bpage="-1" ${rsku.bpage <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
         <button class="btn btn-ghost btn-sm" data-rs-bpage="1" ${rsku.bpage + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
@@ -4247,6 +4248,19 @@ function mergeRemoteProducts(rows){
   return {bases: bases.size, added, updated: updated + mergedFirst};
 }
 /* รายการเก่าที่ยังติดสี/ไซส์ (เช่น WA-251FBACL01-G5, 006174-กรม-10) → ย้ายสถานะงานไปรหัสหลัก แล้วซ่อนรายการเก่า */
+function variantLeftoverBase(old){ // รหัสหลักที่ควรเป็น ถ้ารายการนี้ยังติดสี/ไซส์ (ไม่ติด → '')
+  if(old.active === false || old.merged_into) return '';
+  const canon = canonSku(old.sku, old.brand), parts = canon.split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
+  if(!parts.length) return '';
+  const base = isWarrixSku(parts) ? parts[0] + '-' + parts[1] : stripSkuVariant(parts).join('-');
+  return base.toUpperCase() === String(old.sku || '').trim().toUpperCase() ? '' : base;
+}
+document.addEventListener('click', e => {
+  if(!e.target.closest('[data-rs-tidy]') || !isAdmin()) return;
+  const n = mergeVariantLeftovers();
+  if(n){ saveDB(); toast('รวมรหัสที่ติดสี/ไซส์ ' + n + ' รายการ เข้ารหัสหลักแล้ว'); } else toast('ไม่มีรหัสที่ต้องรวม', 'info');
+  renderRemoteSku();
+});
 function mergeVariantLeftovers(){
   const bySku = new Map(DB.products.map(p => [String(p.sku || '').trim().toUpperCase(), p]));
   const now = nowISO(); let n = 0;
