@@ -2,6 +2,7 @@
    รับไฟล์ส่งออกจาก BigSeller (ส่วนขยาย "ชิวเกิน") → เก็บใน Storage bucket bigseller-exports (ส่วนตัว)
    - POST ?name=<ไฟล์> : body = ไฟล์ .xlsx (ส่วนขยายล็อกอินด้วยบัญชี TaskCheck แล้วส่ง X-Session มา)
    - GET  ?a=list      : หน้าเว็บ TaskCheck ขอรายการไฟล์ล่าสุด + ลิงก์ดาวน์โหลดชั่วคราว
+   - GET  ?a=rrconf    : ชิวเกินขอที่อยู่ตาราง products (publishable key เท่านั้น)
    ทั้งสองแบบต้องมี X-Session ที่ยังไม่หมดอายุ (ตาราง sessions เดียวกับ sku-api)
    ============================================================ */
 import postgres from "npm:postgres@3.4.4";
@@ -39,6 +40,13 @@ Deno.serve(async (req) => {
   try {
     if (req.method !== "GET" && req.method !== "POST") return respond({ ok: false }, 405);
     if (!(await validSession(req.headers.get("x-session") || ""))) return respond({ ok: false, error: "unauthorized" }, 401);
+    if (req.method === "GET" && url.searchParams.get("a") === "rrconf") {
+      // ที่อยู่ + publishable key ของตาราง products (ตั้งไว้ที่ Settings ของ TaskCheck) — ให้ชิวเกินใช้อัปเดต SKU Merchant
+      const r = await sql`select db->'meta'->'rr_products'->>'url' as url, db->'meta'->'rr_products'->>'key' as key from app_state limit 1`;
+      const key = String(r[0]?.key || "");
+      if (!r[0]?.url || !/^sb_publishable_/.test(key)) return respond({ ok: false, error: "ยังไม่ได้ตั้งค่า products ใน Settings" }, 404);
+      return respond({ ok: true, url: r[0].url, key });
+    }
     if (req.method === "GET") {
       const rows = await sql`select name, created_at, (metadata->>'size')::bigint as size from storage.objects
                              where bucket_id = ${BUCKET} and created_at > now() - make_interval(hours => ${LIST_HOURS})
