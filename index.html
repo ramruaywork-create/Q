@@ -1016,6 +1016,7 @@ function skuVariantParts(raw, base){
   rest.forEach(x => (SKU_SIZE_RE.test(x.toUpperCase().replace(/[()\[\]\s.]/g, '')) || SKU_NUM_SIZE_RE.test(x) ? sizes : colors).push(x));
   return {colors, sizes};
 }
+const isJunkBrand = b => String(b || '').trim().toUpperCase() === 'NO'; // แบรนด์ NO = ไม่ใช่สินค้าจริง
 const isWarrixSku = parts => parts.length >= 2 && /^(WA|WP)$/i.test(parts[0]); // WARRIX: WA-xxx / WP-xxx
 function normalizeBaseSku(sku, brand){
   const raw = String(sku || '').trim();
@@ -4081,7 +4082,7 @@ async function loadRemoteSku(){
     const q = rsku.q.trim().replace(/[,()*%]/g, ' ').trim();
     const filter = q ? '&or=(' + ['sku_merchant', 'brand', 'gtin'].map(f => f + '.ilike.*' + encodeURIComponent(q) + '*').join(',') + ')' : '';
     const from = rsku.page * rsku.size;
-    const res = await rrFetch('products?select=id,sku_merchant,brand,gtin&order=sku_merchant.asc' + filter,
+    const res = await rrFetch('products?select=id,sku_merchant,brand,gtin&order=sku_merchant.asc&and=(or(brand.is.null,brand.neq.NO))' + filter,
       {headers: {'Range-Unit': 'items', Range: from + '-' + (from + rsku.size - 1), Prefer: 'count=exact'}});
     rsku.rows = await res.json();
     rsku.total = Number((res.headers.get('content-range') || '').split('/')[1]) || rsku.rows.length;
@@ -4091,7 +4092,7 @@ async function loadRemoteSku(){
 /* โหมด รหัสสินค้า: SKU หลัก (ตัดสี/ไซส์แล้ว) จากรายการสินค้าในเว็บ + ตารางไซส์ */
 function renderBaseSku(){
   const q = rsku.q.trim().toLowerCase();
-  const list = DB.products.filter(p => !q || [p.sku, p.brand, p.name].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+  const list = DB.products.filter(p => p.active !== false && !isJunkBrand(p.brand) && (!q || [p.sku, p.brand, p.name].join(' ').toLowerCase().includes(q))).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
   const pages = Math.max(1, Math.ceil(list.length / rsku.size)); if(rsku.bpage >= pages) rsku.bpage = pages - 1;
   const rows = list.slice(rsku.bpage * rsku.size, (rsku.bpage + 1) * rsku.size);
   return `
@@ -4201,10 +4202,11 @@ document.addEventListener('click', async e => {
 });
 /* ตัดสี/ไซส์ → รวมเป็น SKU หลัก แล้วเพิ่มเฉพาะที่ยังไม่มี (เติมแบรนด์ให้ SKU เดิมที่ยังว่าง) */
 function mergeRemoteProducts(rows){
-  const mergedFirst = mergeVariantLeftovers(); // รายการเก่าที่ติดสี/ไซส์ → รวมเข้ารหัสหลักก่อน
+  let mergedFirst = mergeVariantLeftovers(); // รายการเก่าที่ติดสี/ไซส์ → รวมเข้ารหัสหลักก่อน
+  DB.products.forEach(p => { if(p.active !== false && isJunkBrand(p.brand)){ p.active = false; p.updated_at = nowISO(); mergedFirst++; } }); // ซ่อนแบรนด์ NO ที่เคยดึงมา
   const bases = new Map();
   rows.forEach(r => {
-    const raw = String(r.sku_merchant || '').trim(); if(!raw) return;
+    const raw = String(r.sku_merchant || '').trim(); if(!raw || isJunkBrand(r.brand)) return;
     const brand = String(r.brand || '').trim(), sku = normalizeBaseSku(raw, brand), k = sku.toUpperCase();
     const v = skuVariantParts(raw, sku);
     let cur = bases.get(k);
