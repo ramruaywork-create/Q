@@ -991,7 +991,7 @@ function stripSkuVariant(parts){
     if(!strippedSize && out.length > 2 && SKU_NUM_SIZE_RE.test(raw.trim()) && isColorPart(out[out.length-2])){ out.pop(); strippedSize = true; continue; } // 006174-กรม-10
     if(!t || SKU_SIZE_RE.test(t)){ out.pop(); strippedSize = true; continue; }
     if(/[฀-๿]/.test(raw) || SKU_COLOR_RE.test(t)){ out.pop(); continue; }       // สีภาษาไทย / สีอังกฤษ
-    if(strippedSize && !strippedCode && /^[A-Z]{1,3}$/.test(t)){ out.pop(); strippedCode = true; continue; } // รหัสสีสั้น เช่น PH, BK
+    if(strippedSize && !strippedCode && /^[A-Z]{1,3}(\/[A-Z]{1,3})*$/.test(t)){ out.pop(); strippedCode = true; continue; } // รหัสสีสั้น เช่น PH, BK
     break;
   }
   return out;
@@ -1017,9 +1017,15 @@ function skuVariantParts(raw, base){
   return {colors, sizes};
 }
 const isJunkBrand = b => String(b || '').trim().toUpperCase() === 'NO'; // แบรนด์ NO = ไม่ใช่สินค้าจริง
+/* PEGAN: รหัสจริงเป็นเลข 7 หลักติดกัน (2624033) แต่บางแถวพิมพ์มีขีด (26-24033-เทาดำ-XL) → เอาขีดแรกออก */
+function canonSku(sku, brand){
+  const raw = String(sku || '').trim();
+  if(brand !== undefined && brand !== null && brand !== '' && !/pegan/i.test(brand)) return raw;
+  return raw.replace(/^(\d{2})\s*-\s*(\d{5})(?=$|\s*-)/, '$1$2');
+}
 const isWarrixSku = parts => parts.length >= 2 && /^(WA|WP)$/i.test(parts[0]); // WARRIX: WA-xxx / WP-xxx
 function normalizeBaseSku(sku, brand){
-  const raw = String(sku || '').trim();
+  const raw = canonSku(sku, brand);
   if(!raw) return raw;
   const parts = raw.split(/\s*-\s*/).map(p=>p.trim()).filter(Boolean);
   if(parts.length <= 1) return raw;
@@ -4063,7 +4069,7 @@ async function fetchRemoteProducts(url, key, onProgress){
   return out;
 }
 /* ---------- แก้ไข SKU ในตาราง products ของ Supabase (โปรเจกต์ร้าน) โดยตรง — ใช้ URL/คีย์ที่ตั้งไว้ใน Settings ---------- */
-const rsku = {q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null, mode: 'base', bpage: 0};
+const rsku = {brand: '', q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null, mode: 'base', bpage: 0};
 function rrConf(){ const c = (DB.meta && DB.meta.rr_products) || {}; return c.url && c.key ? {url: c.url.replace(/\/+$/, ''), key: c.key} : null; }
 async function rrFetch(path, opts = {}){
   const c = rrConf(); if(!c) throw new Error('ยังไม่ได้ตั้งค่า Supabase ที่ Settings → ดึงสินค้าจาก Supabase');
@@ -4082,22 +4088,31 @@ async function loadRemoteSku(){
     const q = rsku.q.trim().replace(/[,()*%]/g, ' ').trim();
     const filter = q ? '&or=(' + ['sku_merchant', 'brand', 'gtin'].map(f => f + '.ilike.*' + encodeURIComponent(q) + '*').join(',') + ')' : '';
     const from = rsku.page * rsku.size;
-    const res = await rrFetch('products?select=id,sku_merchant,brand,gtin&order=sku_merchant.asc&and=(or(brand.is.null,brand.neq.NO))' + filter,
+    const res = await rrFetch('products?select=id,sku_merchant,brand,gtin&order=sku_merchant.asc&and=(or(brand.is.null,brand.neq.NO))' + (rsku.brand ? '&brand=ilike.' + encodeURIComponent(rsku.brand.replace(/[*%_,()]/g, ' ')) : '') + filter,
       {headers: {'Range-Unit': 'items', Range: from + '-' + (from + rsku.size - 1), Prefer: 'count=exact'}});
     rsku.rows = await res.json();
     rsku.total = Number((res.headers.get('content-range') || '').split('/')[1]) || rsku.rows.length;
   }catch(e){ rsku.err = e.message; rsku.rows = []; rsku.total = 0; }
   rsku.loading = false; renderRemoteSku();
 }
+/* ดรอปดาวน์แบรนด์ — รวมตัวพิมพ์เล็ก/ใหญ่เป็นแบรนด์เดียว (Grand Sport = GRAND SPORT) */
+function rsBrandSelect(){
+  const m = new Map();
+  DB.products.forEach(p => { if(p.active === false || isJunkBrand(p.brand)) return; const b = String(p.brand || '').trim(); if(!b) return; const k = b.toUpperCase(); m.set(k, (m.get(k) || 0) + 1); });
+  const opts = [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  return `<select id="rsBrand" class="input lg:max-w-[14rem]"><option value="">ทุกแบรนด์</option>${opts.map(([k, n]) => `<option value="${esc(k)}" ${rsku.brand === k ? 'selected' : ''}>${esc(k)} (${n})</option>`).join('')}</select>`;
+}
+document.addEventListener('change', e => { if(e.target.id !== 'rsBrand') return; rsku.brand = e.target.value; rsku.page = 0; rsku.bpage = 0; rsku.edit = null; if(rsku.mode === 'base') renderRemoteSku(); else loadRemoteSku(); });
 /* โหมด รหัสสินค้า: SKU หลัก (ตัดสี/ไซส์แล้ว) จากรายการสินค้าในเว็บ + ตารางไซส์ */
 function renderBaseSku(){
   const q = rsku.q.trim().toLowerCase();
-  const list = DB.products.filter(p => p.active !== false && !isJunkBrand(p.brand) && (!q || [p.sku, p.brand, p.name].join(' ').toLowerCase().includes(q))).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+  const list = DB.products.filter(p => p.active !== false && !isJunkBrand(p.brand) && (!rsku.brand || String(p.brand || '').trim().toUpperCase() === rsku.brand) && (!q || [p.sku, p.brand, p.name].join(' ').toLowerCase().includes(q))).sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
   const pages = Math.max(1, Math.ceil(list.length / rsku.size)); if(rsku.bpage >= pages) rsku.bpage = pages - 1;
   const rows = list.slice(rsku.bpage * rsku.size, (rsku.bpage + 1) * rsku.size);
   return `
     <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
       <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหารหัสสินค้า / แบรนด์ แล้วกด Enter" value="${esc(rsku.q)}">
+      ${rsBrandSelect()}
       <span class="text-sm text-slate-500 badge-num">${list.length.toLocaleString()} รหัส · หน้า ${rsku.bpage + 1}/${pages}</span>
       <div class="flex gap-1 lg:ml-auto whitespace-nowrap shrink-0">
         <button class="btn btn-ghost btn-sm" data-rs-bpage="-1" ${rsku.bpage <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
@@ -4130,6 +4145,7 @@ function renderRemoteSku(){
     ${modeBar}
     <div class="card p-4 flex flex-col lg:flex-row lg:items-center gap-3">
       <input id="rsQ" class="input lg:max-w-md" type="search" placeholder="ค้นหา SKU / แบรนด์ / GTIN แล้วกด Enter" value="${esc(rsku.q)}">
+      ${rsBrandSelect()}
       <span class="text-sm text-slate-500 badge-num">${rsku.loading ? 'กำลังโหลด…' : `${rsku.total.toLocaleString()} รายการ · หน้า ${rsku.page + 1}/${pages}`}</span>
       <div class="flex gap-1 lg:ml-auto whitespace-nowrap shrink-0">
         <button class="btn btn-ghost btn-sm" data-rs-page="-1" ${rsku.page <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
@@ -4206,8 +4222,8 @@ function mergeRemoteProducts(rows){
   DB.products.forEach(p => { if(p.active !== false && isJunkBrand(p.brand)){ p.active = false; p.updated_at = nowISO(); mergedFirst++; } }); // ซ่อนแบรนด์ NO ที่เคยดึงมา
   const bases = new Map();
   rows.forEach(r => {
-    const raw = String(r.sku_merchant || '').trim(); if(!raw || isJunkBrand(r.brand)) return;
-    const brand = String(r.brand || '').trim(), sku = normalizeBaseSku(raw, brand), k = sku.toUpperCase();
+    const brand = String(r.brand || '').trim(), raw = canonSku(r.sku_merchant, brand); if(!raw || isJunkBrand(brand)) return;
+    const sku = normalizeBaseSku(raw, brand), k = sku.toUpperCase();
     const v = skuVariantParts(raw, sku);
     let cur = bases.get(k);
     if(!cur){ cur = {sku, brand, colors: new Set(), sizes: new Set()}; bases.set(k, cur); } else if(!cur.brand && brand) cur.brand = brand;
@@ -4236,14 +4252,15 @@ function mergeVariantLeftovers(){
   const now = nowISO(); let n = 0;
   DB.products.forEach(old => {
     if(old.active === false || old.merged_into) return;
-    const parts = String(old.sku || '').split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
-    if(parts.length < 2) return;
+    const canon = canonSku(old.sku, old.brand);
+    const parts = canon.split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
+    if(!parts.length) return;
     const base = isWarrixSku(parts) ? parts[0] + '-' + parts[1] : stripSkuVariant(parts).join('-');
     if(base.toUpperCase() === String(old.sku || '').trim().toUpperCase()) return;
     let b = bySku.get(base.toUpperCase());
     if(!b){ b = {id: uid(), sku: base, name: old.name || '', brand: old.brand || '', colors: [], sizes: [], created_at: now, active: true, source: old.source || 'merge'}; DB.products.push(b); bySku.set(base.toUpperCase(), b); }
     if(b.active === false) b.active = true;
-    const v = skuVariantParts(old.sku, base); // ส่วนสี/ไซส์ของรายการเก่า
+    const v = skuVariantParts(canon, base); // ส่วนสี/ไซส์ของรายการเก่า
     b.colors = [...new Set([...(b.colors || []), ...v.colors])]; b.sizes = sortSizes([...(b.sizes || []), ...v.sizes]);
     if(!b.size_chart && old.size_chart) b.size_chart = old.size_chart;
     b.excel_checks = {...(old.excel_checks || {}), ...(b.excel_checks || {})};
