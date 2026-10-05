@@ -972,10 +972,13 @@ function showApp(){
 /* ตัดสี/ไซส์ออกจาก SKU เช่น 020666-เทา-3XL → 020666, WA-214PLACL32-PH-3L → WA-214PLACL32 */
 const SKU_SIZE_RE = /^(Y?(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|XXXXL|[2-9]XL|[2-9]L)|SS|F|FS|FREE|FREESIZE|ONESIZE|OS)$/; // Y = ไซส์เด็ก เช่น YS, YXL
 const SKU_COLOR_RE = /^(DARK|LIGHT|NEON|D|L)?(BLACK|WHITE|RED|BLUE|GREEN|YELLOW|ORANGE|PINK|PURPLE|BROWN|GREY|GRAY|NAVY|BEIGE|CREAM|KHAKI|GOLD|SILVER|TEAL|INDIGO|MAROON|CORAL|WINE|MINT|LIME|AQUA|OFFWHITE|IVORY|SKY|SKYBLUE|ROYAL|ROYALBLUE|CHARCOAL|OLIVE)$/;
+const SKU_NUM_SIZE_RE = /^\d{1,2}(\.\d)?$/; // ไซส์ตัวเลข เช่น 6, 8, 10, 39.5
+const isColorPart = raw => /[฀-๿]/.test(raw) || SKU_COLOR_RE.test(String(raw).toUpperCase().replace(/[()\[\]\s.]/g,''));
 function knownSkuSet(){
   const list = (typeof DB!=='undefined' && DB && Array.isArray(DB.products)) ? DB.products : [];
   if(_knownSkuCache.n !== list.length){
-    _knownSkuCache = {n:list.length, set:new Set(list.map(p=>String(p.sku||'').trim().toUpperCase()))};
+    // ไม่นับรายการที่ถูกรวมเข้ารหัสหลักแล้ว (merged_into) — ไม่งั้น SKU ที่ติดสี/ไซส์จะถูกมองว่าเป็นรหัสหลัก
+    _knownSkuCache = {n:list.length, set:new Set(list.filter(p=>!p.merged_into).map(p=>String(p.sku||'').trim().toUpperCase()))};
   }
   return _knownSkuCache.set;
 }
@@ -985,6 +988,7 @@ function stripSkuVariant(parts){
   while(out.length > 1){
     const raw = out[out.length-1];
     const t = raw.toUpperCase().replace(/[()\[\]\s.]/g,'');
+    if(!strippedSize && out.length > 2 && SKU_NUM_SIZE_RE.test(raw.trim()) && isColorPart(out[out.length-2])){ out.pop(); strippedSize = true; continue; } // 006174-กรม-10
     if(!t || SKU_SIZE_RE.test(t)){ out.pop(); strippedSize = true; continue; }
     if(/[฀-๿]/.test(raw) || SKU_COLOR_RE.test(t)){ out.pop(); continue; }       // สีภาษาไทย / สีอังกฤษ
     if(strippedSize && !strippedCode && /^[A-Z]{1,3}$/.test(t)){ out.pop(); strippedCode = true; continue; } // รหัสสีสั้น เช่น PH, BK
@@ -996,6 +1000,7 @@ function stripSkuVariant(parts){
 const SIZE_RANK = s => {
   const t = String(s).toUpperCase(), youth = /^Y(?!$)/.test(t) && SKU_SIZE_RE.test(t) ? 1 : 0, core = youth ? t.slice(1) : t;
   const order = {XXXS:0, XXS:1, XS:2, S:3, M:4, L:5, XL:6, XXL:7, '2XL':7, '2L':7, XXXL:8, '3XL':8, '3L':8, XXXXL:9, '4XL':9, '4L':9};
+  if(SKU_NUM_SIZE_RE.test(t)) return 200 + Number(t); // ไซส์ตัวเลขเรียงตามค่า
   const n = core.match(/^([5-9])X?L$/); const r = n ? 5 + Number(n[1]) : order[core];
   return r === undefined ? 1000 : (youth ? r - 100 : r); // ไซส์เด็กมาก่อน, ไซส์ไม่รู้จัก/FREE ไว้ท้าย
 };
@@ -1008,7 +1013,7 @@ function skuVariantParts(raw, base){
   const parts = String(raw || '').split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
   const rest = parts.slice(String(base || '').split(/\s*-\s*/).filter(Boolean).length);
   const colors = [], sizes = [];
-  rest.forEach(x => (SKU_SIZE_RE.test(x.toUpperCase().replace(/[()\[\]\s.]/g, '')) ? sizes : colors).push(x));
+  rest.forEach(x => (SKU_SIZE_RE.test(x.toUpperCase().replace(/[()\[\]\s.]/g, '')) || SKU_NUM_SIZE_RE.test(x) ? sizes : colors).push(x));
   return {colors, sizes};
 }
 const isWarrixSku = parts => parts.length >= 2 && /^(WA|WP)$/i.test(parts[0]); // WARRIX: WA-xxx / WP-xxx
@@ -4196,6 +4201,7 @@ document.addEventListener('click', async e => {
 });
 /* ตัดสี/ไซส์ → รวมเป็น SKU หลัก แล้วเพิ่มเฉพาะที่ยังไม่มี (เติมแบรนด์ให้ SKU เดิมที่ยังว่าง) */
 function mergeRemoteProducts(rows){
+  const mergedFirst = mergeVariantLeftovers(); // รายการเก่าที่ติดสี/ไซส์ → รวมเข้ารหัสหลักก่อน
   const bases = new Map();
   rows.forEach(r => {
     const raw = String(r.sku_merchant || '').trim(); if(!raw) return;
@@ -4220,24 +4226,23 @@ function mergeRemoteProducts(rows){
     DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, colors, sizes, created_at: nowISO(), active: true, source: 'supabase'});
     added++;
   });
-  const merged = mergeWarrixVariants();
-  return {bases: bases.size, added, updated: updated + merged};
+  return {bases: bases.size, added, updated: updated + mergedFirst};
 }
-/* รายการ WARRIX เก่าที่ยังติดสี/ไซส์ (เช่น WA-251FBACL01-G5) → ย้ายสถานะงานไปรหัสหลัก (WA-251FBACL01) แล้วซ่อนรายการเก่า */
-function mergeWarrixVariants(){
+/* รายการเก่าที่ยังติดสี/ไซส์ (เช่น WA-251FBACL01-G5, 006174-กรม-10) → ย้ายสถานะงานไปรหัสหลัก แล้วซ่อนรายการเก่า */
+function mergeVariantLeftovers(){
   const bySku = new Map(DB.products.map(p => [String(p.sku || '').trim().toUpperCase(), p]));
   const now = nowISO(); let n = 0;
   DB.products.forEach(old => {
-    if(old.active === false) return;
-    const base = normalizeBaseSku(old.sku, old.brand);
+    if(old.active === false || old.merged_into) return;
+    const parts = String(old.sku || '').split(/\s*-\s*/).map(x => x.trim()).filter(Boolean);
+    if(parts.length < 2) return;
+    const base = isWarrixSku(parts) ? parts[0] + '-' + parts[1] : stripSkuVariant(parts).join('-');
     if(base.toUpperCase() === String(old.sku || '').trim().toUpperCase()) return;
-    const parts = String(old.sku).split(/\s*-\s*/).filter(Boolean);
-    if(!isWarrixSku(parts, old.brand)) return;
     let b = bySku.get(base.toUpperCase());
     if(!b){ b = {id: uid(), sku: base, name: old.name || '', brand: old.brand || '', colors: [], sizes: [], created_at: now, active: true, source: old.source || 'merge'}; DB.products.push(b); bySku.set(base.toUpperCase(), b); }
     if(b.active === false) b.active = true;
-    const extra = parts.slice(2).join('-'); // ส่วนสี/ไซส์ของรายการเก่า
-    if(extra && !(b.colors || []).includes(extra) && !(b.sizes || []).includes(extra)) b.colors = [...(b.colors || []), extra];
+    const v = skuVariantParts(old.sku, base); // ส่วนสี/ไซส์ของรายการเก่า
+    b.colors = [...new Set([...(b.colors || []), ...v.colors])]; b.sizes = sortSizes([...(b.sizes || []), ...v.sizes]);
     if(!b.size_chart && old.size_chart) b.size_chart = old.size_chart;
     b.excel_checks = {...(old.excel_checks || {}), ...(b.excel_checks || {})};
     DB.worklogs.filter(w => w.product_id === old.id).forEach(w => {
@@ -4248,7 +4253,7 @@ function mergeWarrixVariants(){
     });
     old.active = false; old.merged_into = b.id; old.updated_at = now; b.updated_at = now; n++;
   });
-  if(n) logHistory('warrix_merge', 'รวม SKU WARRIX ที่ติดสี/ไซส์ ' + n + ' รายการ เข้ารหัสหลัก');
+  if(n){ _knownSkuCache.n = -1; logHistory('variant_merge', 'รวม SKU ที่ติดสี/ไซส์ ' + n + ' รายการ เข้ารหัสหลัก'); }
   return n;
 }
 document.addEventListener('click', async e => {
