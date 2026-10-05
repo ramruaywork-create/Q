@@ -4068,6 +4068,95 @@ async function fetchRemoteProducts(url, key, onProgress){
   }
   return out;
 }
+/* ---------- อัปเดตตาราง products ให้ตรงกับไฟล์ SKU Merchant (.zip) ที่ชิวเกินอัปขึ้น Supabase ----------
+   เพิ่ม SKU ที่ยังไม่มี · แก้แบรนด์/GTIN ที่ต่าง (ไม่เอาค่าว่างไปทับ) · ไม่ลบแถวที่ BigSeller ไม่มี — ต้องกดยืนยันก่อนเขียนทุกครั้ง */
+let bsSync = null;
+const gtinKey = g => String(g || '').trim().replace(/^0+(?=\d)/, ''); // เทียบ GTIN โดยไม่สนเลข 0 นำหน้า
+async function readSkuMerchantZip(buf){
+  const zip = XLSX.CFB.read(new Uint8Array(buf), {type: 'array'});
+  const out = [];
+  zip.FileIndex.forEach((f, i) => {
+    if(!/\.xlsx$/i.test(f.name) || !f.content || !f.content.length) return;
+    const wb = XLSX.read(f.content, {type: 'array'});
+    XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''}).forEach(r => {
+      const sku = String(r['เลข SKU'] || '').trim(); if(!sku) return;
+      out.push({sku_merchant: sku, brand: String(r['แบรนด์'] || '').trim(), name: String(r['ชื่อ SKU'] || '').trim(), gtin: String(r['GTIN'] || '').split(/[\r\n,;]+/)[0].trim()});
+    });
+  });
+  return out;
+}
+async function prepareBsSync(){
+  const box = $('#rsBsSync'), c = rrConf();
+  if(!box) return;
+  if(!c){ toast('ยังไม่ได้ตั้งค่า Supabase ที่ Settings → ดึงสินค้าจาก Supabase', 'error'); return; }
+  if(!apiMode || !getToken()){ toast('ต้องเชื่อมต่อเซิร์ฟเวอร์ก่อน', 'error'); return; }
+  const say = t => { box.innerHTML = `<div class="card p-4 text-sm text-slate-600 flex items-center gap-3"><span class="inline-block h-4 w-4 rounded-full border-2 border-brand-600 border-t-transparent animate-spin"></span>${esc(t)}</div>`; };
+  try{
+    say('กำลังหาไฟล์ SKU Merchant ล่าสุด...');
+    const j = await (await fetch(BS_UPLOAD_URL + '?a=list', {cache: 'no-store', headers: {'X-Session': getToken()}})).json();
+    const file = ((j && j.files) || []).find(f => /SKU_Merchant.*\.zip$/i.test(f.name));
+    if(!file){ box.innerHTML = ''; toast('ยังไม่มีไฟล์ SKU Merchant (.zip) จากชิวเกินใน 36 ชม.ที่ผ่านมา — กดเริ่มส่งออกในชิวเกินก่อน', 'info'); return; }
+    say('กำลังอ่านไฟล์ ' + file.name.split('/').pop() + ' ...');
+    const src = await readSkuMerchantZip(await (await fetch(file.url, {cache: 'no-store'})).arrayBuffer());
+    if(!src.length){ box.innerHTML = ''; toast('อ่านไฟล์ไม่ได้ หรือไฟล์ว่าง', 'error'); return; }
+    say('กำลังอ่านตาราง products ...');
+    const cur = [];
+    for(let from = 0; ; from += 1000){
+      const rows = await (await rrFetch('products?select=id,brand,sku_merchant,gtin&order=id.asc', {headers: {'Range-Unit': 'items', Range: from + '-' + (from + 999)}})).json();
+      cur.push(...rows); say('กำลังอ่านตาราง products ... ' + cur.length.toLocaleString());
+      if(rows.length < 1000) break;
+    }
+    const have = new Map(cur.map(r => [String(r.sku_merchant).trim().toUpperCase(), r]));
+    const seen = new Set(), add = [], upd = [];
+    src.forEach(r => {
+      const k = r.sku_merchant.toUpperCase(); if(seen.has(k)) return; seen.add(k);
+      const ex = have.get(k);
+      if(!ex){ add.push({sku_merchant: r.sku_merchant, brand: r.brand || r.name || null, gtin: r.gtin || null}); return; } // ไม่มีแบรนด์ → ใช้ชื่อ SKU (BigSeller ใส่ชื่อแบรนด์ไว้ตรงนั้น)
+      const brand = r.brand && r.brand !== String(ex.brand || '').trim() ? r.brand : null;
+      const gtin = r.gtin && gtinKey(r.gtin) !== gtinKey(ex.gtin) ? r.gtin : null;
+      if(brand || gtin) upd.push({sku_merchant: ex.sku_merchant, brand: brand || ex.brand || null, gtin: gtin || ex.gtin || null, _was: ex, _brand: !!brand, _gtin: !!gtin});
+    });
+    const onlyHere = cur.filter(r => !seen.has(String(r.sku_merchant).trim().toUpperCase()));
+    bsSync = {file: file.name.split('/').pop(), at: file.at, add, upd, src: src.length, cur: cur.length, onlyHere: onlyHere.length};
+    const when = new Date(file.at).toLocaleString('th-TH', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+    const sample = (list, f) => list.slice(0, 6).map(f).join('') + (list.length > 6 ? `<div class="text-slate-400">… อีก ${(list.length - 6).toLocaleString()} รายการ</div>` : '');
+    box.innerHTML = `<div class="card p-4 fade-in">
+      <p class="font-semibold text-sm flex items-center gap-2 mb-1"><i data-lucide="cloud-download" class="w-4 h-4 text-brand-600"></i>เทียบกับ BigSeller · ไฟล์ ${esc(when)}</p>
+      <p class="text-xs text-slate-500 mb-3">BigSeller ${src.length.toLocaleString()} SKU · ตาราง products ${cur.length.toLocaleString()} แถว</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs mb-3">
+        <div class="rounded-lg bg-green-50 p-3"><p class="text-lg font-extrabold text-done badge-num">${add.length.toLocaleString()}</p><p class="font-semibold text-slate-600 mb-1">SKU ใหม่ — จะเพิ่ม</p><div class="font-mono text-slate-500 space-y-0.5">${sample(add, r => `<div class="truncate">${esc(r.sku_merchant)}</div>`)}</div></div>
+        <div class="rounded-lg bg-amber-50 p-3"><p class="text-lg font-extrabold text-progress badge-num">${upd.length.toLocaleString()}</p><p class="font-semibold text-slate-600 mb-1">แบรนด์/GTIN ต่าง — จะแก้</p><div class="font-mono text-slate-500 space-y-0.5">${sample(upd, r => `<div class="truncate" title="${esc((r._was.brand || '-') + ' / ' + (r._was.gtin || '-') + ' → ' + (r.brand || '-') + ' / ' + (r.gtin || '-'))}">${esc(r.sku_merchant)} <span class="text-slate-400">${r._brand ? 'แบรนด์' : ''}${r._brand && r._gtin ? '+' : ''}${r._gtin ? 'GTIN' : ''}</span></div>`)}</div></div>
+        <div class="rounded-lg bg-slate-50 p-3"><p class="text-lg font-extrabold text-slate-600 badge-num">${onlyHere.length.toLocaleString()}</p><p class="font-semibold text-slate-600 mb-1">มีในตารางแต่ไม่มีใน BigSeller</p><p class="text-slate-500">ไม่ลบ ไม่แตะ</p></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs text-slate-500 mr-auto">ค่าว่างจาก BigSeller จะไม่ทับค่าที่มีอยู่ · GTIN ที่ต่างแค่เลข 0 นำหน้าถือว่าเหมือนกัน</span>
+        <button class="btn btn-ghost btn-sm" data-rs-bscancel>ยกเลิก</button>
+        <button class="btn btn-primary btn-sm" data-rs-bsapply ${add.length + upd.length ? '' : 'disabled style="opacity:.4"'}><i data-lucide="check" class="w-4 h-4"></i>ยืนยัน เพิ่ม ${add.length.toLocaleString()} · แก้ ${upd.length.toLocaleString()}</button>
+      </div></div>`;
+    if(window.lucide) lucide.createIcons();
+  }catch(err){ box.innerHTML = ''; toast('เทียบไม่สำเร็จ: ' + err.message, 'error'); }
+}
+async function applyBsSync(btn){
+  const b = bsSync, box = $('#rsBsSync'); if(!b) return;
+  btn.disabled = true;
+  const rows = [...b.add, ...b.upd.map(r => ({sku_merchant: r.sku_merchant, brand: r.brand, gtin: r.gtin}))];
+  try{
+    for(let i = 0; i < rows.length; i += 500){
+      btn.textContent = 'กำลังบันทึก ' + Math.min(i + 500, rows.length).toLocaleString() + '/' + rows.length.toLocaleString();
+      await rrFetch('products?on_conflict=sku_merchant', {method: 'POST', body: JSON.stringify(rows.slice(i, i + 500)), headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}});
+    }
+    logHistory('rr_bs_sync', 'อัปเดต products จาก BigSeller (' + b.file + '): เพิ่ม ' + b.add.length + ' · แก้ ' + b.upd.length);
+    saveDB(); bsSync = null; if(box) box.innerHTML = '';
+    toast('อัปเดต products แล้ว: เพิ่ม ' + b.add.length.toLocaleString() + ' · แก้ ' + b.upd.length.toLocaleString());
+    loadRemoteSku();
+  }catch(err){ toast('บันทึกไม่สำเร็จ: ' + err.message + ' (ส่วนที่บันทึกไปแล้วยังอยู่ กดเทียบใหม่ได้)', 'error'); btn.disabled = false; }
+}
+document.addEventListener('click', e => {
+  if(!isAdmin()) return;
+  if(e.target.closest('[data-rs-bssync]')) prepareBsSync();
+  else if(e.target.closest('[data-rs-bscancel]')){ bsSync = null; const box = $('#rsBsSync'); if(box) box.innerHTML = ''; }
+  else if(e.target.closest('[data-rs-bsapply]')) applyBsSync(e.target.closest('[data-rs-bsapply]'));
+});
 /* ---------- แก้ไข SKU ในตาราง products ของ Supabase (โปรเจกต์ร้าน) โดยตรง — ใช้ URL/คีย์ที่ตั้งไว้ใน Settings ---------- */
 const rsku = {brand: '', q: '', page: 0, size: 50, rows: [], total: 0, loading: false, err: '', edit: null, mode: 'base', bpage: 0};
 function rrConf(){ const c = (DB.meta && DB.meta.rr_products) || {}; return c.url && c.key ? {url: c.url.replace(/\/+$/, ''), key: c.key} : null; }
@@ -4152,8 +4241,10 @@ function renderRemoteSku(){
         <button class="btn btn-ghost btn-sm" data-rs-page="-1" ${rsku.page <= 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
         <button class="btn btn-ghost btn-sm" data-rs-page="1" ${rsku.page + 1 >= pages ? 'disabled' : ''}>ถัดไป ›</button>
         <button class="btn btn-ghost btn-sm" data-rs-reload title="โหลดใหม่"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
+        ${admin ? '<button class="btn btn-primary btn-sm" data-rs-bssync title="เทียบไฟล์ SKU Merchant ล่าสุดที่ชิวเกินอัปขึ้นมา กับตาราง products แล้วเพิ่ม/แก้ให้ตรง (ดูสรุปก่อนยืนยัน)"><i data-lucide="cloud-download" class="w-4 h-4"></i>อัปเดตจาก BigSeller</button>' : ''}
       </div>
     </div></div>
+    <div id="rsBsSync"></div>
     ${admin ? `<div class="card p-4">
       <p class="font-semibold text-slate-700 mb-2 flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>เพิ่ม SKU ใหม่</p>
       <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2">
