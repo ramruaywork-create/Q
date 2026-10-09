@@ -2888,9 +2888,10 @@ function buildReportText(date, userId){
     PLATFORMS.forEach(plat=>{
       const plogs = ulogs.filter(w=>w.platform===plat);
       if(!plogs.length) return;
-      const byShop = {};
-      plogs.forEach(w=>{ const c=shopById(w.shop_id)?.code||'?'; byShop[c]=(byShop[c]||0)+1; });
-      out += '🏪 '+plat+' '+Object.entries(byShop).map(([c,n])=>c+': '+n).join(' ')+'\n';
+      const skusByShop = {};
+      plogs.forEach(w=>{ const c=shopById(w.shop_id)?.code||'?'; (skusByShop[c]=skusByShop[c]||[]).push(productById(w.product_id)?.sku||'?'); });
+      out += '🏪 '+plat+' '+Object.entries(skusByShop).map(([c,s])=>c+': '+s.length).join(' ')+'\n';
+      Object.entries(skusByShop).forEach(([c,s])=> out += '  '+c+': '+s.sort().join(', ')+'\n');
     });
     out += '🎬 TikTok ลงแล้ว: '+ttLinks.length+' คลิป\n';
     if(ttLinks.length){
