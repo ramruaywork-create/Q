@@ -617,7 +617,7 @@ function loadDB(){
   saveDB();
 }
 function renderCurrentView(){
-  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderRemoteSku, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, gallery:renderGallery, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings};
+  const renderers = {dashboard:renderDashboard, check:renderCheck, tiktokjobs:renderTikTokJobs, skulist:renderRemoteSku, import:renderImport, importfix:renderImportFix, mywork:renderMyWork, tasks:renderTasks, campaigns:renderCampaigns, gallery:renderGallery, report:renderReport, users:renderUsers, shops:renderShops, settings:renderSettings, addsku:renderAddSku};
   const renderer = renderers[currentView] || renderDashboard;
   if(typeof renderer === 'function') renderer();
   if(currentUser) renderNav();
@@ -878,6 +878,7 @@ const NAV = [ // group = หัวข้อในเมนูซ้าย
   {id:'dashboard', label:'แดชบอร์ด',     icon:'layout-dashboard', admin:false, group:'ภาพรวม'},
   {id:'report',    label:'รายงานรายวัน', icon:'clipboard-list',   admin:false, group:'ภาพรวม'},
   {id:'skulist',   label:'SKU Merchant',  icon:'list',             admin:false, group:'สินค้า'},
+  {id:'addsku',    label:'เพิ่ม SKU ใหม่', icon:'plus-circle',      admin:true,  group:'สินค้า'},
   {id:'importfix', label:'แก้ SKU นำเข้าไม่สำเร็จ', icon:'file-warning', admin:true, group:'สินค้า'},
   {id:'tasks',     label:'งาน',           icon:'list-todo',        admin:false, group:'งานจาก LINE'}, // แท็บ: งานทั่วไป / วิดีโอแคมเปญ
   {id:'gallery',   label:'คลังรูป',       icon:'images',           admin:false, group:'งานจาก LINE'},
@@ -1047,6 +1048,64 @@ function skuProblem(baseSku){
   if(v.length > 60) return 'SKU ยาวเกิน 60 ตัวอักษร';
   if(/[^A-Za-z0-9\-\/ ._]/.test(v)) return 'SKU มีอักขระที่ไม่รองรับ';
   return '';
+}
+/* ---------- SKU ใหม่: ติดป้าย "ใหม่" + แจ้งเตือน 7 วันหลังลง แล้วหายเอง ---------- */
+const NEW_SKU_DAYS = 7;
+const newSkuUntil = () => new Date(Date.now() + NEW_SKU_DAYS * 86400000).toISOString();
+const isNewSku = p => !!(p && p.new_until && p.active !== false && !p.merged_into && String(p.new_until) > nowISO());
+const newSkuDaysLeft = p => Math.max(1, Math.ceil((Date.parse(p.new_until) - Date.now()) / 86400000));
+const newSkuPill = p => isNewSku(p) ? `<span class="pill pill-done" style="padding:1px 7px;font-size:10px" title="รหัสใหม่ — แจ้งเตือนอีก ${newSkuDaysLeft(p)} วัน">ใหม่</span>` : '';
+const recentNewSkus = () => (DB && Array.isArray(DB.products) ? DB.products : []).filter(isNewSku).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+const skuCompact = s => String(s || '').toUpperCase().replace(/[^A-Z0-9฀-๿]/g, ''); // A-101 / a101 / A 101 → A101
+/* ดัชนีเช็ก SKU (ใช้ร่วมกับ knownSkuSet — ถูกล้างทุกครั้งที่ saveDB) */
+function skuIndex(){
+  knownSkuSet();
+  if(!_knownSkuCache.idx){
+    const idx = new Map(), brands = new Map();
+    DB.products.forEach(p => {
+      const b = String(p.brand || '').trim();
+      if(b && !isJunkBrand(b)){ const c = brands.get(b.toUpperCase()) || new Map(); c.set(b, (c.get(b) || 0) + 1); brands.set(b.toUpperCase(), c); }
+      if(p.merged_into) return;
+      const k = skuCompact(p.sku); if(k && !idx.has(k)) idx.set(k, p);
+    });
+    // แบรนด์: ใช้ตัวพิมพ์ที่มีคนใช้มากที่สุด (Grand Sport / GRAND SPORT → แบบเดียว)
+    const canon = new Map(); brands.forEach((c, k) => canon.set(k, [...c.entries()].sort((a, b) => b[1] - a[1])[0][0]));
+    _knownSkuCache.idx = idx; _knownSkuCache.brands = canon;
+  }
+  return _knownSkuCache;
+}
+/* เช็ก SKU ที่จะเพิ่ม → status: new | exists | inactive | similar | bad */
+function checkNewSku(raw, brand){
+  const sku = normalizeBaseSku(String(raw || '').trim());
+  const cache = skuIndex();
+  const b = String(brand || '').trim();
+  const res = {raw, sku, brand: b ? (cache.brands.get(b.toUpperCase()) || b) : '', status: 'new', note: '', match: null};
+  const problem = skuProblem(sku);
+  if(problem) return {...res, status: 'bad', note: problem};
+  const m = cache.idx.get(skuCompact(sku));
+  if(!m) return {...res, note: 'รหัสใหม่ — ยังไม่เคยมีในระบบ'};
+  res.match = m;
+  if(String(m.sku || '').trim().toUpperCase() === sku.toUpperCase()){
+    return m.active === false ? {...res, status: 'inactive', note: 'มีในระบบแต่ถูกปิดใช้ — เพิ่มแล้วจะเปิดกลับ'} : {...res, status: 'exists', note: 'มีในระบบแล้ว'};
+  }
+  return {...res, status: 'similar', note: 'คล้ายกับ ' + m.sku + (m.active === false ? ' (ปิดใช้)' : '') + ' — ตรวจว่าไม่ใช่รหัสเดียวกัน'};
+}
+function addNewProduct(sku, name, brand, source){
+  const p = {id: uid(), sku, name: name || '', brand: brand || '', created_at: nowISO(), active: true, new_until: newSkuUntil(), added_by: currentUser ? currentUser.id : null, source: source || 'manual'};
+  DB.products.push(p); return p;
+}
+function newSkuBanner(){
+  const list = recentNewSkus(); if(!list.length) return '';
+  const shown = list.slice(0, 12);
+  return `<div class="card p-4 border-l-4" style="border-left-color:#16a34a">
+    <div class="flex items-center gap-2 flex-wrap">
+      <i data-lucide="sparkles" class="w-5 h-5 text-done"></i>
+      <b>SKU ใหม่ ${list.length} รหัส</b>
+      <span class="text-xs text-slate-400">แจ้งเตือน ${NEW_SKU_DAYS} วันหลังลงรหัส แล้วจะหายเอง</span>
+      <button class="btn btn-ghost btn-sm ml-auto" data-nav="check">ไปหน้าทำงาน</button>
+    </div>
+    <div class="flex flex-wrap gap-1.5 mt-3">${shown.map(p => `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-green-50 text-xs"><span class="font-mono font-semibold">${esc(p.sku)}</span>${p.brand ? `<span class="text-slate-400">${esc(p.brand)}</span>` : ''}<span class="text-[10px] text-slate-400">· ${newSkuDaysLeft(p)}ว.</span></span>`).join('')}${list.length > shown.length ? `<span class="text-xs text-slate-400 self-center">+${list.length - shown.length} รหัส</span>` : ''}</div>
+  </div>`;
 }
 const rowHasData = r => Object.values(r||{}).some(v => String(v??'').trim() !== '');
 function displaySku(sku){ return normalizeBaseSku(sku); }
@@ -1266,6 +1325,7 @@ function renderDashboard(){
 
   $('#view').innerHTML = `
   <div class="fade-in space-y-5">
+    ${newSkuBanner()}
     <div class="card overflow-hidden p-0 bg-transparent border-0 shadow-none">
       <div class="relative official-news-shell rounded-[20px] border border-slate-200 bg-[#f4f4f4] shadow-sm" data-official-news-shell>
         <div id="officialNewsTrack" class="flex transition-transform duration-[700ms] ease-[cubic-bezier(0.22,1,0.36,1)]" data-index="0" style="transform: translateX(0%);">
@@ -1885,7 +1945,7 @@ function renderCheck(){
           products.map((p, rowNo)=>{
             if(isAll) return `<tr>
               <td class="text-right text-xs text-slate-400 badge-num">${rowNo + 1}</td>
-              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
+              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)} ${newSkuPill(p)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
               <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
               <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
@@ -1899,7 +1959,7 @@ function renderCheck(){
             return `<tr>
               <td class="text-right text-xs text-slate-400 badge-num">${rowNo + 1}</td>
               <td><input type="checkbox" class="w-4 h-4 chk-row" data-pid="${p.id}" ${checked}></td>
-              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
+              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)} ${newSkuPill(p)}</td>
               <td><span class="text-xs text-slate-500">${esc(p.brand||'-')}</span></td>
               <td class="text-xs whitespace-nowrap" title="${esc((p.colors||[]).join(', '))}">${(p.colors||[]).length ? `<b>${p.colors.length}</b> สี` : '<span class="text-slate-300">-</span>'}</td>
               <td class="text-xs whitespace-nowrap" title="${esc(sortSizes(p.sizes||[]).join(', '))}">${(p.sizes||[]).length ? esc(sizeRangeLabel(p.sizes)) : '<span class="text-slate-300">-</span>'}</td>
@@ -2008,7 +2068,7 @@ function renderSkuList(){
           pageRows.map(r=>{
             const p=r.p, s=r.shopId?shopById(r.shopId):null, w=r.w, st=w?w.status:'pending', t=w?tiktokOf(w.id):null;
             return `<tr>
-              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td>
+              <td class="font-mono font-semibold text-brand-700">${esc(p.sku)} ${newSkuPill(p)}</td>
               <td class="text-xs text-slate-500">${esc(p.brand||'-')}</td>
               <td>${r.platform ? esc(r.platform) : '<span class="text-slate-300">-</span>'}</td>
               <td>${s?`<b>${esc(s.code)}</b>`:'<span class="text-slate-300">-</span>'}</td>
@@ -2089,7 +2149,6 @@ let addSkuTab = 'bulk';
 let bulkPreview = null;
 function parseBulkSku(text, defaultBrand){
   const lines = String(text||'').split(/\r?\n/);
-  const known = knownSkuSet();
   const seen = new Map(); const rows = [];
   lines.forEach((line, idx) => {
     if(!line.trim()) return;
@@ -2097,22 +2156,31 @@ function parseBulkSku(text, defaultBrand){
     const parts = line.split(/\t|,|;|\|/).map(x => x.trim());
     const raw = parts[0] || '';
     if(idx === 0 && /^sku$/i.test(raw)) return; // แถวหัวตาราง
-    const brand = parts[1] || defaultBrand || '';
-    const sku = normalizeBaseSku(raw);
-    const row = {line: idx+1, raw, sku, brand, status: 'new', note: ''};
-    const problem = skuProblem(sku);
-    if(problem){ row.status = 'bad'; row.note = problem; }
-    else if(seen.has(sku.toUpperCase())){ row.status = 'dup'; row.note = 'ซ้ำกับบรรทัด '+seen.get(sku.toUpperCase()); }
-    else if(known.has(sku.toUpperCase())){ row.status = 'exists'; row.note = 'มีในระบบแล้ว'; }
-    if(row.status !== 'bad' && !seen.has(sku.toUpperCase())) seen.set(sku.toUpperCase(), idx+1);
+    const r = checkNewSku(raw, parts[1] || defaultBrand || '');
+    const row = {line: idx+1, raw, sku: r.sku, brand: r.brand, status: r.status, note: r.note, matchId: r.match ? r.match.id : null};
+    const key = skuCompact(r.sku);
+    if(row.status !== 'bad'){
+      if(seen.has(key)){ row.status = 'dup'; row.note = 'ซ้ำกับบรรทัด '+seen.get(key); }
+      else seen.set(key, idx+1);
+    }
     rows.push(row);
   });
   return rows;
 }
+document.addEventListener('input', e => {
+  if(e.target.id !== 'addSku' && e.target.id !== 'addBrand') return;
+  const box = $('#addSkuLive'); if(!box) return;
+  const raw = $('#addSku').value.trim();
+  if(!raw){ box.innerHTML = ''; return; }
+  const r = checkNewSku(raw, $('#addBrand') ? $('#addBrand').value : '');
+  const tone = {new:'text-done', exists:'text-red-600', bad:'text-red-600', similar:'text-progress', inactive:'text-progress'}[r.status];
+  const icon = {new:'✓', exists:'✕', bad:'✕', similar:'!', inactive:'!'}[r.status];
+  box.innerHTML = `<span class="${tone} font-semibold">${icon} ${esc(r.note)}</span>` + (r.sku && r.sku.toUpperCase() !== raw.toUpperCase() ? `<span class="text-slate-400"> · จะบันทึกเป็น <b class="font-mono">${esc(r.sku)}</b> (ตัดสี/ไซส์ออก)</span>` : '');
+});
 function renderAddSku(){
   const brands = [...new Set(DB.products.map(p=>p.brand).filter(Boolean))].sort();
   const tabBtn = (id, label) => `<button class="btn btn-sm ${addSkuTab===id?'btn-primary':'btn-ghost'}" data-addsku-tab="${id}">${label}</button>`;
-  const pill = st => ({new:'<span class="pill pill-done">ใหม่</span>', exists:'<span class="pill pill-progress">มีแล้ว</span>', dup:'<span class="pill pill-pending">ซ้ำในรายการ</span>', bad:'<span class="pill" style="background:#fee2e2;color:#b91c1c">ไม่ถูกต้อง</span>'}[st]);
+  const pill = st => ({new:'<span class="pill pill-done">ใหม่</span>', similar:'<span class="pill pill-progress">คล้ายของเดิม</span>', inactive:'<span class="pill pill-tiktok">เปิดกลับ</span>', exists:'<span class="pill pill-progress">มีแล้ว</span>', dup:'<span class="pill pill-pending">ซ้ำในรายการ</span>', bad:'<span class="pill" style="background:#fee2e2;color:#b91c1c">ไม่ถูกต้อง</span>'}[st]);
   const counts = bulkPreview ? bulkPreview.reduce((c,r)=>(c[r.status]=(c[r.status]||0)+1,c),{}) : {};
   $('#view').innerHTML = `
   <div class="fade-in max-w-2xl mx-auto space-y-4">
@@ -2122,13 +2190,14 @@ function renderAddSku(){
     <div class="card p-6 space-y-4">
       <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="plus-circle" class="w-5 h-5 text-brand-600"></i>เพิ่มสินค้าใหม่</h3>
       <div><label class="text-sm font-medium text-slate-600 mb-1 block">SKU <span class="text-red-500">*</span></label>
-        <input id="addSku" class="input font-mono" placeholder="เช่น 020666"></div>
+        <input id="addSku" class="input font-mono" placeholder="เช่น 020666" autocomplete="off">
+        <div id="addSkuLive" class="mt-2 text-xs"></div></div>
       <div><label class="text-sm font-medium text-slate-600 mb-1 block">ชื่อสินค้า</label>
         <input id="addName" class="input" placeholder="เช่น เสื้อบอล ทีมชาติ 2026"></div>
       <div><label class="text-sm font-medium text-slate-600 mb-1 block">แบรนด์</label>
         <input id="addBrand" class="input" placeholder="เช่น Grand Sport / Pegan / Warrix" list="brandList"></div>
       <button id="addBtn" class="btn btn-primary w-full py-3"><i data-lucide="save" class="w-4 h-4"></i>เพิ่มสินค้า</button>
-      <p class="text-xs text-slate-400 text-center">ระบบจะตรวจสอบ SKU ซ้ำก่อนบันทึกอัตโนมัติ</p>
+      <p class="text-xs text-slate-400 text-center">ระบบตรวจ SKU ซ้ำ / คล้ายของเดิม / รูปแบบไม่ถูกต้อง ก่อนบันทึก · รหัสใหม่แจ้งเตือน ${NEW_SKU_DAYS} วัน</p>
     </div>` : `
     <div class="card p-6 space-y-4">
       <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="list-plus" class="w-5 h-5 text-brand-600"></i>เพิ่ม SKU เป็นชุด</h3>
@@ -2139,21 +2208,32 @@ function renderAddSku(){
       <button id="bulkCheck" class="btn btn-soft w-full py-2.5"><i data-lucide="scan-search" class="w-4 h-4"></i>ตรวจสอบรายการ</button>
       ${bulkPreview ? `
       <div class="border rounded-xl p-4 fade-in" style="border-color:var(--border);">
-        <div class="grid grid-cols-4 gap-2 mb-3 text-center">
+        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3 text-center">
           <div class="p-2 rounded-lg bg-green-50"><p class="text-xl font-extrabold badge-num text-done">${counts.new||0}</p><p class="text-[11px] text-slate-500">เพิ่มใหม่</p></div>
+          <div class="p-2 rounded-lg bg-amber-50"><p class="text-xl font-extrabold badge-num text-progress">${counts.similar||0}</p><p class="text-[11px] text-slate-500">คล้ายของเดิม</p></div>
+          <div class="p-2 rounded-lg bg-blue-50"><p class="text-xl font-extrabold badge-num" style="color:#1d4ed8">${counts.inactive||0}</p><p class="text-[11px] text-slate-500">เปิดกลับ</p></div>
           <div class="p-2 rounded-lg bg-amber-50"><p class="text-xl font-extrabold badge-num text-progress">${counts.exists||0}</p><p class="text-[11px] text-slate-500">มีในระบบแล้ว</p></div>
           <div class="p-2 rounded-lg bg-slate-50"><p class="text-xl font-extrabold badge-num">${counts.dup||0}</p><p class="text-[11px] text-slate-500">ซ้ำในรายการ</p></div>
           <div class="p-2 rounded-lg bg-red-50"><p class="text-xl font-extrabold badge-num text-red-600">${counts.bad||0}</p><p class="text-[11px] text-slate-500">ไม่ถูกต้อง</p></div>
         </div>
         <div class="max-h-72 overflow-y-auto border rounded-lg mb-3" style="border-color:var(--border);">
           <table class="data"><thead><tr><th>บรรทัด</th><th>ที่พิมพ์</th><th>SKU ที่บันทึก</th><th>แบรนด์</th><th>สถานะ</th></tr></thead><tbody>
-            ${bulkPreview.map(r=>`<tr><td class="text-xs text-slate-400">${r.line}</td><td class="font-mono text-xs text-slate-400">${esc(r.raw)}</td><td class="font-mono text-xs font-semibold">${esc(r.sku)}</td><td class="text-xs">${esc(r.brand||'-')}</td><td>${pill(r.status)}${r.note&&r.status!=='exists'?`<div class="text-[10px] text-slate-400 mt-0.5">${esc(r.note)}</div>`:''}</td></tr>`).join('')}
+            ${bulkPreview.map(r=>`<tr><td class="text-xs text-slate-400">${r.line}</td><td class="font-mono text-xs text-slate-400">${esc(r.raw)}</td><td class="font-mono text-xs font-semibold">${esc(r.sku)}</td><td class="text-xs">${esc(r.brand||'-')}</td><td>${pill(r.status)}${r.note&&r.status!=='exists'&&r.status!=='new'?`<div class="text-[10px] text-slate-400 mt-0.5">${esc(r.note)}</div>`:''}</td></tr>`).join('')}
           </tbody></table>
         </div>
         ${counts.exists ? `<label class="flex items-center gap-2 text-xs text-slate-600 mb-3 cursor-pointer"><input type="checkbox" id="bulkUpdateBrand"> อัปเดตแบรนด์ของ SKU ที่มีในระบบแล้ว (${counts.exists} รายการ)</label>` : ''}
-        <button id="bulkSave" class="btn btn-primary w-full py-3" ${(counts.new||counts.exists)?'':'disabled style="opacity:.4;cursor:not-allowed;"'}><i data-lucide="save" class="w-4 h-4"></i>บันทึก ${counts.new||0} SKU ใหม่</button>
+        ${counts.similar ? `<p class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">มี ${counts.similar} รายการที่เขียนคล้ายรหัสเดิม (เช่น ต่างกันแค่ขีด/ช่องว่าง/ตัวพิมพ์) — ตรวจก่อนบันทึก ถ้าเป็นรหัสเดียวกันให้ลบบรรทัดนั้นออก แล้วกดตรวจสอบใหม่</p>` : ''}
+        <p class="text-xs text-slate-500 mb-3">รหัสที่เพิ่มใหม่จะขึ้นป้าย <span class="pill pill-done" style="padding:1px 7px;font-size:10px">ใหม่</span> และแจ้งเตือนทุกคนที่แดชบอร์ด ${NEW_SKU_DAYS} วัน แล้วหายเอง</p>
+        <button id="bulkSave" class="btn btn-primary w-full py-3" ${(counts.new||counts.similar||counts.inactive)?'':'disabled style="opacity:.4;cursor:not-allowed;"'}><i data-lucide="save" class="w-4 h-4"></i>บันทึก ${(counts.new||0)+(counts.similar||0)} SKU ใหม่${counts.inactive?' · เปิดกลับ '+counts.inactive:''}</button>
       </div>` : ''}
     </div>`}
+    ${(() => { const list = recentNewSkus(); return list.length ? `
+    <div class="card p-4">
+      <h3 class="font-bold text-sm mb-2 flex items-center gap-2"><i data-lucide="sparkles" class="w-4 h-4 text-done"></i>SKU ใหม่ที่กำลังแจ้งเตือน (${list.length})</h3>
+      <div class="max-h-64 overflow-y-auto"><table class="data"><thead><tr><th>SKU</th><th>แบรนด์</th><th>ลงโดย</th><th>ลงเมื่อ</th><th>เหลือ</th><th></th></tr></thead><tbody>
+      ${list.map(p => `<tr><td class="font-mono text-xs font-semibold">${esc(p.sku)}</td><td class="text-xs">${esc(p.brand||'-')}</td><td class="text-xs">${esc((userById(p.added_by)||{}).name||'-')}</td><td class="text-xs text-slate-400">${localDateTime(p.created_at)}</td><td class="text-xs">${newSkuDaysLeft(p)} วัน</td><td><button class="btn btn-ghost btn-sm" data-clear-new="${p.id}" title="เลิกแจ้งเตือนรหัสนี้">เลิกแจ้ง</button></td></tr>`).join('')}
+      </tbody></table></div>
+    </div>` : ''; })()}
   </div>`;
   const ta = document.getElementById('bulkSkuText'); if(ta && bulkPreview && bulkPreview._text!==undefined) ta.value = bulkPreview._text;
   const bb = document.getElementById('bulkBrand'); if(bb && bulkPreview && bulkPreview._brand!==undefined) bb.value = bulkPreview._brand;
@@ -2695,7 +2775,7 @@ function saveImportFix(id){
     if(brand && !ex.brand) ex.brand = brand;
     a.note = 'มีในระบบแล้ว';
   } else {
-    DB.products.push({id:uid(), sku, name, brand, created_at:nowISO(), active:true});
+    addNewProduct(sku, name, checkNewSku(sku, brand).brand, 'importfix');
     a.note = 'เพิ่มเป็นสินค้าใหม่';
   }
   a.status = 'fixed'; a.resolved_sku = sku; a.resolved_at = nowISO(); a.resolved_by = currentUser ? currentUser.id : null;
@@ -4123,7 +4203,7 @@ function renderBaseSku(){
     <div class="card overflow-hidden"><div class="overflow-x-auto">
       <table class="data">
         <thead><tr><th>รหัสสินค้า</th><th>ตารางไซส์</th><th>แบรนด์</th></tr></thead>
-        <tbody>${rows.map(p => `<tr><td class="font-mono font-semibold text-brand-700">${esc(p.sku)}</td><td>${sizeChartCell(p)}</td><td class="text-slate-600">${esc(p.brand || '-')}</td></tr>`).join('')
+        <tbody>${rows.map(p => `<tr><td class="font-mono font-semibold text-brand-700">${esc(p.sku)} ${newSkuPill(p)}</td><td>${sizeChartCell(p)}</td><td class="text-slate-600">${esc(p.brand || '-')}</td></tr>`).join('')
           || '<tr><td colspan="3" class="text-center text-slate-400 py-8">ไม่พบรหัสสินค้า</td></tr>'}</tbody>
       </table>
     </div></div>`;
@@ -4242,7 +4322,8 @@ function mergeRemoteProducts(rows){
       if(touched){ p.updated_at = nowISO(); updated++; }
       return;
     }
-    DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, colors, sizes, created_at: nowISO(), active: true, source: 'supabase'});
+    // ดึงครั้งแรก (ยังไม่มีรหัสในเว็บ) ไม่ติดป้ายใหม่ — ครั้งถัดไปรหัสที่โผล่มาใหม่จริงๆ จึงจะแจ้งเตือน
+    DB.products.push({id: uid(), sku: v.sku, name: '', brand: v.brand, colors, sizes, created_at: nowISO(), active: true, source: 'supabase', ...(have.size >= 50 ? {new_until: newSkuUntil()} : {})});
     added++;
   });
   return {bases: bases.size, added, updated: updated + mergedFirst};
@@ -4620,30 +4701,48 @@ document.addEventListener('click', e=>{
   }
   else if(e.target.id==='bulkSave' || e.target.closest('#bulkSave')){
     if(!bulkPreview) return;
+    if(!isAdmin()){ toast('เฉพาะ Admin เท่านั้นที่เพิ่ม SKU ได้','error'); return; }
     // re-check against the latest data (someone else may have added SKUs meanwhile)
     const rows = parseBulkSku(bulkPreview._text, bulkPreview._brand);
     const upd = document.getElementById('bulkUpdateBrand')?.checked;
-    let added = 0, updated = 0;
+    let added = 0, updated = 0, reopened = 0;
+    const names = [];
     rows.forEach(r => {
-      if(r.status === 'new'){ DB.products.push({id:uid(), sku:r.sku, name:'', brand:r.brand, created_at:nowISO(), active:true}); added++; }
+      if(r.status === 'new' || r.status === 'similar'){ addNewProduct(r.sku, '', r.brand, 'bulk'); added++; if(names.length < 5) names.push(r.sku); }
+      else if(r.status === 'inactive'){ const ex = DB.products.find(p => p.id === r.matchId); if(ex){ ex.active = true; ex.updated_at = nowISO(); if(r.brand && !ex.brand) ex.brand = r.brand; reopened++; } }
       else if(r.status === 'exists' && upd && r.brand){
-        const ex = DB.products.find(p => String(p.sku||'').trim().toUpperCase() === r.sku.toUpperCase());
+        const ex = DB.products.find(p => p.id === r.matchId);
         if(ex && ex.brand !== r.brand){ ex.brand = r.brand; ex.updated_at = nowISO(); updated++; }
       }
     });
-    logHistory('bulk_add_product', 'เพิ่ม '+added+' SKU'+(updated?(', อัปเดตแบรนด์ '+updated):''));
+    if(!added && !reopened && !updated){ toast('ไม่มีรายการให้บันทึก','info'); return; }
+    logHistory('bulk_add_product', 'เพิ่ม '+added+' SKU'+(names.length?' ('+names.join(', ')+(added>names.length?' ...':'')+')':'')+(reopened?(', เปิดกลับ '+reopened):'')+(updated?(', อัปเดตแบรนด์ '+updated):''));
     saveDB();
-    toast('เพิ่ม '+added+' SKU สำเร็จ'+(updated?(' · อัปเดตแบรนด์ '+updated+' รายการ'):''));
-    bulkPreview = null; renderAddSku();
+    toast('เพิ่ม '+added+' SKU ใหม่สำเร็จ (แจ้งเตือน '+NEW_SKU_DAYS+' วัน)'+(reopened?(' · เปิดกลับ '+reopened):'')+(updated?(' · อัปเดตแบรนด์ '+updated+' รายการ'):''));
+    bulkPreview = null; renderAddSku(); renderNav();
   }
   else if(e.target.id==='addBtn' || e.target.closest('#addBtn')){
-    const sku=$('#addSku').value.trim(), name=$('#addName').value.trim(), brand=$('#addBrand').value.trim();
-    if(!sku){ toast('กรุณากรอก SKU','error'); return; }
-    const normalizedAdd = normalizeBaseSku(sku).toLowerCase();
-    if(DB.products.some(p => normalizeBaseSku(p.sku).toLowerCase() === normalizedAdd)){ toast('มี SKU นี้ในระบบแล้ว — ห้ามซ้ำ','error'); return; }
-    DB.products.push({id:uid(), sku: normalizeBaseSku(sku), name, brand, created_at:nowISO(), active:true});
-    logHistory('add_product', sku); saveDB();
-    toast('เพิ่มสินค้า '+sku+' สำเร็จ'); $('#addSku').value=''; $('#addName').value=''; $('#addBrand').value='';
+    if(!isAdmin()){ toast('เฉพาะ Admin เท่านั้นที่เพิ่ม SKU ได้','error'); return; }
+    const name = $('#addName').value.trim();
+    const r = checkNewSku($('#addSku').value, $('#addBrand').value);
+    if(!String($('#addSku').value).trim()){ toast('กรุณากรอก SKU','error'); return; }
+    if(r.status === 'bad'){ toast(r.note,'error'); return; }
+    if(r.status === 'exists'){ toast('SKU '+r.sku+' มีอยู่ในระบบแล้ว — ห้ามซ้ำ','error'); return; }
+    if(r.status === 'similar' && !confirm('"'+r.sku+'" คล้ายกับรหัสเดิม '+r.match.sku+'\nถ้าเป็นรหัสเดียวกันไม่ต้องเพิ่ม\n\nยืนยันเพิ่มเป็นรหัสใหม่?')) return;
+    if(r.status === 'inactive'){
+      if(!confirm('SKU '+r.sku+' เคยมีในระบบแต่ถูกปิดใช้\nเปิดใช้งานกลับ?')) return;
+      r.match.active = true; r.match.updated_at = nowISO(); if(r.brand && !r.match.brand) r.match.brand = r.brand; if(name && !r.match.name) r.match.name = name;
+      logHistory('reopen_product', r.sku); saveDB(); toast('เปิดใช้ '+r.sku+' กลับแล้ว');
+    } else {
+      addNewProduct(r.sku, name, r.brand, 'manual');
+      logHistory('add_product', r.sku+(r.brand?' ('+r.brand+')':'')); saveDB();
+      toast('เพิ่มรหัสใหม่ '+r.sku+' สำเร็จ — แจ้งเตือนทุกคน '+NEW_SKU_DAYS+' วัน');
+    }
+    renderAddSku(); renderNav(); const si = $('#addSku'); if(si) si.focus();
+  }
+  else if(e.target.closest('[data-clear-new]')){
+    const pr = productById(e.target.closest('[data-clear-new]').dataset.clearNew);
+    if(pr){ pr.new_until = null; pr.updated_at = nowISO(); logHistory('clear_new_sku', pr.sku); saveDB(); renderAddSku(); }
   }
   else if(e.target.id==='importConfirm' || e.target.closest('#importConfirm')){
     if(!importPreview) return;
